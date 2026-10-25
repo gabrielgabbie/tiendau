@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { CURRENCIES, today, t, LANGS } from "@/core/index.js";
 import { S, put, sync, signOut, unsyncedCount, moveGuestDataToAccount, exportData, importData, deleteAllData, deleteAccount } from "@/data/store.js";
 import { supabase } from "@/data/supabase.js";
-import { settings, clearChat, bump, who, providerLabel, syncText, prefs, setLanguage, setTheme } from "@/lib/model.js";
+import { settings, clearChat, bump, who, providerLabel, syncText, prefs, setLanguage } from "@/lib/model.js";
 import { friendly } from "@/lib/auth-errors.js";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppSheet, SheetActions, Field, Section, Segmented, ConfirmButton, useSheets } from "@/components/app/bits.jsx";
-import { Moon, Sun } from "lucide-react";
 
 export function SyncLine() {
   const dot = { syncing: "bg-primary", offline: "bg-warn", error: "bg-spend" }[sync.status] || "bg-earn";
@@ -100,9 +99,6 @@ export function SettingsSheet(sheet) {
       <Section title={t("Preferences")} first>
         <Field label={t("Language")}>
           <Segmented label={t("Language")} value={prefs.lang} onChange={setLanguage} options={Object.entries(LANGS)} />
-        </Field>
-        <Field label={t("Theme")}>
-          <Segmented label={t("Theme")} value={prefs.theme} onChange={setTheme} options={[["light", <><Sun />{t("Light")}</>], ["dark", <><Moon />{t("Dark")}</>]]} />
         </Field>
         <Field label={t("Currency")} htmlFor="sCur" hint={t("Changing currency only changes how amounts are shown. It doesn't convert existing records.")}>
           <Select value={s.currency} onValueChange={(v) => put("meta", Object.assign(settings(), { currency: v }))}>

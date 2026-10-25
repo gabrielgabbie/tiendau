@@ -1,18 +1,14 @@
 <!doctype html>
-<html lang="vi" class="dark">
+<html lang="vi">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Tiền Đâu</title>
   <meta name="description" content="Log spending and income in seconds, and split bills with friends.">
-  <meta name="theme-color" content="#0F1412">
+  <meta name="theme-color" content="#EEF1EC">
   <script>
-    // apply the saved theme and language before the page draws (dark and Vietnamese by default)
-    try {
-      var th = JSON.parse(localStorage.getItem("pl-theme") || '"dark"'), lg = JSON.parse(localStorage.getItem("pl-lang") || '"vi"');
-      if (th === "light") { document.documentElement.classList.remove("dark"); document.querySelector('meta[name="theme-color"]').content = "#EEF1EC"; }
-      document.documentElement.lang = lg;
-    } catch (e) {}
+    // apply the saved language before the page draws (Vietnamese by default)
+    try { document.documentElement.lang = JSON.parse(localStorage.getItem("pl-lang") || '"vi"'); } catch (e) {}
   </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">

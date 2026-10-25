@@ -26,11 +26,11 @@ export const subscribe = (f) => { subs.add(f); return () => subs.delete(f); };
 export const getVersion = () => version;
 ["change", "mode", "status"].forEach((ev) => on(ev, bump));
 
-// ---------- device preferences: language (Vietnamese by default) and theme (dark by default) ----------
-export const prefs = { lang: LS.get("pl-lang", "vi"), theme: LS.get("pl-theme", "dark") };
+// ---------- device preferences: language (Vietnamese by default) ----------
+// The app is light-only for now; the dark tokens stay in styles.css, and `theme` is the one place to bring it back.
+export const prefs = { lang: LS.get("pl-lang", "vi"), theme: "light" };
 setLang(prefs.lang);
 export function setLanguage(l) { prefs.lang = l; LS.set("pl-lang", l); setLang(l); document.documentElement.lang = l; bump(); }
-export function setTheme(th) { prefs.theme = th; LS.set("pl-theme", th); applyTheme(); bump(); }
 export function applyTheme() {
   const dark = prefs.theme === "dark", el = document.documentElement;
   el.classList.toggle("dark", dark); el.style.colorScheme = dark ? "dark" : "light";
