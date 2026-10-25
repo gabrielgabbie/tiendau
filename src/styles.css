@@ -1,0 +1,112 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Tiền Đâu: one-screen phone app — header, scrolling view, bottom tab bar. Receipt-paper surfaces, jade ink.
+   shadcn/ui components read the tokens below; dark mode is the `dark` class on <html> (set from Settings, dark by default). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --radius: 0.75rem;
+  --background: #EEF1EC;
+  --foreground: #16201B;
+  --card: #FFFFFF;
+  --card-foreground: #16201B;
+  --popover: #FFFFFF;
+  --popover-foreground: #16201B;
+  --primary: #0E5E4E;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E3E8E1;
+  --secondary-foreground: #16201B;
+  --muted: #E3E8E1;
+  --muted-foreground: #5D6862;
+  --accent: #D3E6DD;
+  --accent-foreground: #0E5E4E;
+  --destructive: #B3422A;
+  --border: #D2D9D0;
+  --input: #D2D9D0;
+  --ring: #0E5E4E;
+  /* app-specific */
+  --spend: #B3422A; --earn: #25774A; --warn: #946600;
+  --c1:#2F8F74; --c2:#D07A3A; --c3:#5B7FC7; --c4:#B8566F; --c5:#8C7A2E; --c6:#7A5FB0; --c7:#3E9AB0; --c8:#8A8F86; --c9:#C2508F;
+  --lime: #D4F542; --lime-foreground: #1C2405;
+}
+.dark {
+  --background: #0F1412;
+  --foreground: #E6ECE8;
+  --card: #17201C;
+  --card-foreground: #E6ECE8;
+  --popover: #17201C;
+  --popover-foreground: #E6ECE8;
+  --primary: #62C4A7;
+  --primary-foreground: #0A1411;
+  --secondary: #212B26;
+  --secondary-foreground: #E6ECE8;
+  --muted: #212B26;
+  --muted-foreground: #97A39C;
+  --accent: #1D3A31;
+  --accent-foreground: #62C4A7;
+  --destructive: #F0866B;
+  --border: #2C3833;
+  --input: #2C3833;
+  --ring: #62C4A7;
+  --spend: #F0866B; --earn: #6FCB8C; --warn: #E3B54D;
+  color-scheme: dark;
+}
+
+@theme inline {
+  /* Geist everywhere (SIL Open Font License, self-hosted via @fontsource-variable) */
+  --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-spend: var(--spend);
+  --color-earn: var(--earn);
+  --color-warn: var(--warn);
+  --color-lime: var(--lime);
+  --color-lime-foreground: var(--lime-foreground);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 15px; line-height: 1.45; overflow: hidden;
+    -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent;
+  }
+  button { cursor: pointer; }
+}
+
+@utility amt { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+@utility pad-safe-x {
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+@utility scrollbar-none { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
+
+/* the torn top edge of a receipt */
+.receipt {
+  -webkit-mask: radial-gradient(circle 4px at 6px 0, #0000 98%, #000) -6px 0/12px 100% repeat-x;
+  mask: radial-gradient(circle 4px at 6px 0, #0000 98%, #000) -6px 0/12px 100% repeat-x;
+}

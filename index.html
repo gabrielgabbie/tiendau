@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tiền Đâu</title>
+  <meta name="description" content="Log spending and income in seconds, and split bills with friends.">
+  <meta name="theme-color" content="#0F1412">
+  <script>
+    // apply the saved theme and language before the page draws (dark and Vietnamese by default)
+    try {
+      var th = JSON.parse(localStorage.getItem("pl-theme") || '"dark"'), lg = JSON.parse(localStorage.getItem("pl-lang") || '"vi"');
+      if (th === "light") { document.documentElement.classList.remove("dark"); document.querySelector('meta[name="theme-color"]').content = "#EEF1EC"; }
+      document.documentElement.lang = lg;
+    } catch (e) {}
+  </script>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Tiền Đâu">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
