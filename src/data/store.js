@@ -88,7 +88,7 @@ export function normalizeIds(d) {
   const rekey = (obj) => (obj ? Object.fromEntries(Object.entries(obj).map(([k, v]) => [fix(k), v])) : obj);
   Object.values(d.bills || {}).forEach((b) => {
     const o = { ...b, id: fix(b.id), eventId: b.eventId ? fix(b.eventId) : null, linkedTx: b.linkedTx ? fix(b.linkedTx) : b.linkedTx,
-      paidBy: fix(b.paidBy), shares: rekey(b.shares), paid: rekey(b.paid), people: rekey(b.people),
+      paidBy: fix(b.paidBy), shares: rekey(b.shares), paid: rekey(b.paid), people: rekey(b.people), ...(b.billId ? { billId: fix(b.billId) } : {}),
       payers: (b.payers || []).map((x) => ({ ...x, p: fix(x.p) })),
       adjustments: (b.adjustments || []).map((a) => ({ ...a, person: a.person ? fix(a.person) : a.person })) };
     out.bills[o.id] = o;

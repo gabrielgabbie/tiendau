@@ -16,14 +16,13 @@ import { AppSheet, SheetActions, Section, Segmented, Chip, ConfirmButton, Amt, D
 import { CategorySelect, SettleSheet } from "./records.jsx";
 
 const QUICK_ADJ = [
-  ["Shipping", { type: "fee", value: "", unit: "amount", alloc: "equal" }],
+  ["Shipping", { type: "fee", value: "", unit: "amount", alloc: "proportional" }],
   ["Service charge", { type: "fee", value: 5, unit: "percent", alloc: "proportional" }],
   ["VAT", { type: "fee", value: 8, unit: "percent", alloc: "proportional" }],
-  ["Tip", { type: "fee", value: "", unit: "amount", alloc: "equal" }],
+  ["Tip", { type: "fee", value: "", unit: "amount", alloc: "proportional" }],
   ["Discount", { type: "discount", value: "", unit: "amount", alloc: "proportional" }],
   ["Voucher %", { type: "discount", value: 10, unit: "percent", alloc: "proportional" }],
 ];
-const ALLOC_LABEL = { proportional: "By what each ordered", equal: "Split equally", person: "One person covers it" };
 const MODE_HINT = { equal: "Everyone pays the same part of the subtotal.", items: "Type what each person ordered. Leave someone empty and they split whatever is left equally.", shares: "Give each person a number of shares, e.g. 2 for someone who ate double." };
 const NEW_EVENT = "__new";
 const NO_EVENT = "__none";
@@ -36,7 +35,8 @@ export function BillSheet({ id, ...sheet }) {
     let b;
     if (id) { b = JSON.parse(JSON.stringify(S.bills[id] || null)); if (b && b.kind !== "settle") normalizeBill(b); }
     else b = { kind: "bill", title: "", subtotal: "", mode: "equal", people: { me: { item: null, weight: 1 } }, adjustments: [], payers: [{ p: "me", amount: null }], eventId: ui.event !== "all" && ui.event !== "none" ? ui.event : null, category: "Food & Drinks", date: today() };
-    if (b) b.adjustments = (b.adjustments || []).map((a) => Object.assign({ id: uid() }, a));
+    // fees and discounts follow the bill's own split (equally / by item / by shares), so there's nothing extra to choose
+    if (b) b.adjustments = (b.adjustments || []).map((a) => Object.assign({ id: uid() }, a, { alloc: "proportional", person: null }));
     ref.current = b;
   }
   const b = ref.current;
@@ -144,30 +144,15 @@ export function BillSheet({ id, ...sheet }) {
         </Disclosure>
 
         <Disclosure title={t("Fees & discounts")} summary={feesSummary} open={feesOpen} onOpenChange={setFeesOpen}>
+          {b.adjustments.length > 0 && <p className="text-xs text-muted-foreground">{t("Shared the same way as the bill.")}</p>}
           {b.adjustments.map((a, i) => {
-            const v = adjAmount(a, subtotal);
             return (
-              <div key={a.id} className={cn("flex flex-col gap-1.5 rounded-md border p-2", a.type === "discount" && "border-dashed")}>
-                <div className="flex items-center gap-1.5">
-                  <Input className={cn(small, "min-w-0 flex-1")} value={a.label} placeholder={t(a.type === "discount" ? "Discount" : "Fee")} aria-label={t("Name")} onChange={(e) => change(() => (a.label = e.target.value))} />
-                  <Input id={`adjv-${a.id}`} className={cn(small, "w-20 text-right")} type="number" min="0" step="any" inputMode="decimal" value={a.value} aria-label={t("Amount")} onChange={(e) => change(() => (a.value = e.target.value))} />
-                  <Segmented size="sm" className="w-16" label={t("Unit")} value={a.unit} onChange={(u) => change(() => (a.unit = u))} options={[["amount", cur().sym], ["percent", "%"]]} />
-                  <Button variant="ghost" size="icon-sm" aria-label={t("Remove {name}", { name: ADJ_NAME(a) })} onClick={() => change(() => b.adjustments.splice(i, 1))}><X /></Button>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Segmented size="sm" className="w-36" label={t("Fee or discount")} value={a.type} onChange={(ty) => change(() => (a.type = ty))} options={[["fee", t("Fee")], ["discount", t("Discount")]]} />
-                  <Select value={a.alloc} onValueChange={(al) => change(() => (a.alloc = al))}>
-                    <SelectTrigger size="sm" className="min-w-0 flex-1 bg-background text-xs" aria-label={t("How to split")}><SelectValue /></SelectTrigger>
-                    <SelectContent>{Object.entries(ALLOC_LABEL).map(([k, l]) => <SelectItem key={k} value={k}>{t(l)}</SelectItem>)}</SelectContent>
-                  </Select>
-                  {a.alloc === "person" && (
-                    <Select value={a.person || ""} onValueChange={(p) => change(() => (a.person = p || null))}>
-                      <SelectTrigger size="sm" className="w-24 bg-background text-xs" aria-label={t("Who covers it")}><SelectValue placeholder={t("Who?")} /></SelectTrigger>
-                      <SelectContent>{P.map((p) => <SelectItem key={p} value={p}>{nm(p)}</SelectItem>)}</SelectContent>
-                    </Select>
-                  )}
-                  <Amt className={cn("ml-auto text-xs whitespace-nowrap", v < 0 && "text-earn")}>{v ? compact(Math.abs(v)) : ""}</Amt>
-                </div>
+              <div key={a.id} className="flex items-center gap-1.5">
+                <Input className={cn(small, "min-w-0 flex-1")} value={a.label} placeholder={t(a.type === "discount" ? "Discount" : "Fee")} aria-label={t("Name")} onChange={(e) => change(() => (a.label = e.target.value))} />
+                <Input id={`adjv-${a.id}`} className={cn(small, "w-24 text-right", a.type === "discount" && "text-earn")} type="text" inputMode="decimal" autoComplete="off" placeholder="0" value={a.value} aria-label={t("Amount")}
+                  onChange={(e) => change(() => (a.value = e.target.value.replace(/[^\d.]/g, "")))} />
+                <Segmented size="sm" className="w-16" label={t("Unit")} value={a.unit} onChange={(u) => change(() => (a.unit = u))} options={[["amount", cur().sym], ["percent", "%"]]} />
+                <Button variant="ghost" size="icon-sm" aria-label={t("Remove {name}", { name: ADJ_NAME(a) })} onClick={() => change(() => b.adjustments.splice(i, 1))}><X /></Button>
               </div>
             );
           })}

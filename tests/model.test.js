@@ -106,3 +106,27 @@ test("a photo with no prices says so instead of adding anything", () => {
   model.finishBill(id, { shop: "", total: null, items: [] });
   assert.equal(model.chatLog.at(-1).made.length, 0);
 });
+
+test("a shared bill shows who still owes, and paying back clears it and adds income", () => {
+  model.send("lẩu 900k với Huy, Tâm");
+  const bill = store.S.bills[model.chatLog.at(-1).made[0].id];
+  let debts = model.billDebts(store.S, bill);
+  assert.equal(debts.length, 2);
+  assert.ok(debts.every((d) => d.to === "me" && d.amount === 300000 && d.paid === 0));
+  const income = Object.keys(store.S.tx).length;
+  model.payBillDebt(bill, debts[0]);
+  debts = model.billDebts(store.S, bill);
+  assert.equal(debts.filter((d) => d.paid === d.amount).length, 1, "one person paid back");
+  assert.equal(Object.keys(store.S.tx).length, income + 1, "the payment is logged as income");
+});
+
+test("a general settle-up pays off that person's oldest bill first", () => {
+  model.send("cà phê 100k với Khoa");
+  const first = store.S.bills[model.chatLog.at(-1).made[0].id];
+  model.send("bún 60k với Khoa");
+  const second = store.S.bills[model.chatLog.at(-1).made[0].id];
+  const khoa = Object.keys(first.shares).find((p) => p !== "me");
+  model.saveSettle({ id: model.uid(), kind: "settle", amount: 50000, paidBy: khoa, shares: { me: 50000 }, date: first.date, createdAt: Date.now() });
+  assert.equal(model.billDebts(store.S, first)[0].paid, 50000);
+  assert.equal(model.billDebts(store.S, second)[0].paid, 0);
+});

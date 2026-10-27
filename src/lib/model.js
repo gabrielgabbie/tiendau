@@ -2,7 +2,7 @@
 // ledger filters and periods. No DOM here; components read these and re-render on store events.
 import {
   EXP_CATS, INC_CATS, guessCat, round, pad, ymd, today, fmtLong, money,
-  isNum, finalizeBill, localParse, t, setLang, locale, billRecords,
+  isNum, finalizeBill, localParse, t, setLang, locale, billRecords, balances, settlePlan, cur,
 } from "../core/index.js"; // relative paths so tests can load this module in Node
 import { S, LS, put, del, sync, on } from "../data/store.js";
 
@@ -109,6 +109,38 @@ export function saveSettle(b) {
     : to === "me" ? { type: "income", amount: b.amount, category: "Refund", note: t("{name} paid you back", { name: pname(b.paidBy) }) }
     : null);
   put("bills", b); return b;
+}
+
+/** Who owes whom for one shared bill, and how much of it has been paid back:
+ *  [{ from, to, amount, paid }]. Payments marked on this bill count first; general "settle up"
+ *  payments between the same two people pay off their oldest bills first. */
+export function billDebts(D, bill) {
+  const tiny = cur().dec ? 0.01 : 1;
+  const debtsOf = (b) => settlePlan(balances({ bills: { [b.id]: b } }, "all"));
+  const debts = debtsOf(bill).map((d) => ({ ...d, paid: 0 }));
+  for (const d of debts) {
+    const pair = (x) => x.kind === "settle" && x.paidBy === d.from && Object.keys(x.shares || {})[0] === d.to;
+    const settles = Object.values(D.bills).filter(pair);
+    // this pair's debts on every bill, oldest first, each paid by its own linked payments
+    const owed = Object.values(D.bills).filter((x) => x.kind === "bill")
+      .sort((x, y) => (x.date + (x.createdAt || 0)).localeCompare(y.date + (y.createdAt || 0)))
+      .map((x) => {
+        const amt = debtsOf(x).filter((e) => e.from === d.from && e.to === d.to).reduce((a, e) => a + e.amount, 0);
+        const linked = settles.filter((st) => st.billId === x.id).reduce((a, st) => a + st.amount, 0);
+        return { id: x.id, left: amt - Math.min(amt, linked), paid: Math.min(amt, linked) };
+      });
+    let pool = settles.filter((st) => !st.billId || !D.bills[st.billId]).reduce((a, st) => a + st.amount, 0);
+    for (const o of owed) { const take = Math.min(pool, o.left); o.paid += take; pool -= take; }
+    d.paid = round(Math.min(d.amount, owed.find((o) => o.id === bill.id)?.paid || 0));
+    if (d.amount - d.paid < tiny) d.paid = d.amount;
+  }
+  return debts;
+}
+
+/** Records that `from` paid `to` back for one bill (the rest of what they owe on it). */
+export function payBillDebt(bill, d) {
+  return saveSettle({ id: uid(), kind: "settle", title: t("Settle up"), amount: round(d.amount - d.paid), paidBy: d.from, shares: { [d.to]: round(d.amount - d.paid) },
+    eventId: bill.eventId || null, billId: bill.id, date: today(), createdAt: Date.now() });
 }
 
 export function deleteBill(id) { const b = S.bills[id]; if (!b) return; if (b.linkedTx && S.tx[b.linkedTx]) del("tx", b.linkedTx); del("bills", id); }
