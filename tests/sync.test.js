@@ -88,18 +88,6 @@ test("stores bills with split details in data", async () => {
   assert.equal(row.title, "Lẩu");
 });
 
-test("syncs event photos, and leaves the column out for events without one", async () => {
-  const plain = crypto.randomUUID(), withPhoto = crypto.randomUUID();
-  store.put("events", { id: plain, name: "Team lunch", date: "2026-10-20" });
-  store.put("events", { id: withPhoto, name: "Đà Lạt", date: "2026-10-18", photo: "data:image/jpeg;base64,AAAA" });
-  await wait();
-  assert.equal("photo" in fake.db.events.find((r) => r.id === plain), false, "no photo key, so older databases keep working");
-  assert.equal(fake.db.events.find((r) => r.id === withPhoto).photo, "data:image/jpeg;base64,AAAA");
-  store.put("events", { id: withPhoto, name: "Đà Lạt", date: "2026-10-18", photo: null });
-  await wait();
-  assert.equal(fake.db.events.find((r) => r.id === withPhoto).photo, null, "removing a photo clears it");
-});
-
 test("queues changes while offline and sends them when back", async () => {
   fake.offline = true;
   const id = crypto.randomUUID();

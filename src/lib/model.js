@@ -2,7 +2,7 @@
 // ledger filters and periods. No DOM here; components read these and re-render on store events.
 import {
   EXP_CATS, INC_CATS, guessCat, round, pad, ymd, today, fmtLong, money,
-  isNum, finalizeBill, localParse, t, setLang, locale,
+  isNum, finalizeBill, localParse, t, setLang, locale, billRecords,
 } from "../core/index.js"; // relative paths so tests can load this module in Node
 import { S, LS, put, del, sync, on } from "../data/store.js";
 
@@ -15,7 +15,8 @@ export const ui = { tab: "chat", event: "all", L: Object.assign({ period: "month
   if (L.cat === "t:expense") L.type = "expense"; else if (L.cat === "t:income") L.type = "income"; else if (L.cat && L.cat !== "all") L.cats = [L.cat === "Food" ? "Food & Drinks" : L.cat]; } delete L.cat;
   L.cats = L.cats.map((c) => (c === "Food" ? "Food & Drinks" : c)); if (!L.type) L.type = "all"; })();
 export const saveL = () => LS.set("pl-ledger", { period: ui.L.period, type: ui.L.type, cats: ui.L.cats, sort: ui.L.sort, from: ui.L.from, to: ui.L.to });
-export let chatLog = LS.get("pl-chat", []);
+// a bill reading that was cut short (app closed mid-read) shows as interrupted, not stuck "reading…"
+export let chatLog = LS.get("pl-chat", []).map((m) => (m.pending ? { role: "bot", text: t("Reading this bill was interrupted. Send the photo again.") } : m));
 export function clearChat() { chatLog = []; LS.set("pl-chat", []); }
 
 // Anything that should repaint the app: store events plus local UI changes (bump).
@@ -112,14 +113,17 @@ export function saveSettle(b) {
 
 export function deleteBill(id) { const b = S.bills[id]; if (!b) return; if (b.linkedTx && S.tx[b.linkedTx]) del("tx", b.linkedTx); del("bills", id); }
 
-function applyItems(items) {
+function applyItems(items, { categoryHint } = {}) {
   const made = [], notes = [];
   for (const it of items || []) {
     const amount = round(Number(it.amount)); if (it.type !== "bill" && !(amount > 0)) continue;
     const date = /^\d{4}-\d{2}-\d{2}$/.test(it.date || "") ? it.date : today();
     if (it.type === "expense" || it.type === "income") {
       const cats = it.type === "income" ? INC_CATS : EXP_CATS;
-      const rec = { id: uid(), type: it.type, amount, category: cats.includes(it.category) ? it.category : guessCat((it.note || "") + " " + (it.category || ""), it.type === "income"), note: String(it.note || (it.category && t(it.category)) || t("Entry")).slice(0, 80), date, createdAt: Date.now() };
+      let category = cats.includes(it.category) ? it.category : guessCat((it.note || "") + " " + (it.category || ""), it.type === "income");
+      // a receipt's items can tell the category when the shop name alone can't
+      if (category === "Other" && it.type === "expense" && categoryHint && cats.includes(categoryHint)) category = categoryHint;
+      const rec = { id: uid(), type: it.type, amount, category, note: String(it.note || (it.category && t(it.category)) || t("Entry")).slice(0, 80), date, createdAt: Date.now() };
       put("tx", rec); made.push({ col: "tx", id: rec.id });
     } else if (it.type === "bill") {
       const sub = round(Number(it.subtotal ?? it.amount)); if (!(sub > 0)) continue;
@@ -144,15 +148,64 @@ function applyItems(items) {
   }
   return { made, notes };
 }
-export function send(text) {
+/** Quick add. `categoryHint` (from a scanned receipt) fills in a category the text alone can't tell. */
+export function send(text, { categoryHint } = {}) {
   text = text.trim(); if (!text) return;
   const res = localParse(text);
-  const { made, notes } = applyItems(res.items);
+  const { made, notes } = applyItems(res.items, { categoryHint });
   let reply = res.reply || (made.length ? t("Added {n} records.", { n: made.length }) : t("I couldn't find anything to add."));
   if (notes.length) reply += "\n" + notes.join("\n");
   chatLog.push({ role: "me", text }, { role: "bot", text: reply, made });
-  chatLog = chatLog.slice(-80); LS.set("pl-chat", chatLog);
-  bump();
+  saveChat(); bump();
+}
+
+// ---------- bills sent as photos ----------
+const saveChat = () => { chatLog = chatLog.slice(-80); LS.set("pl-chat", chatLog.map(({ progress, ...m }) => m)); };
+
+/** Adds the user's photo message (and an optional note) plus a "reading…" reply; returns the reply's id. */
+export function startBill({ thumb, text }) {
+  const id = uid();
+  chatLog.push({ role: "me", text: text.trim(), image: thumb }, { role: "bot", id, pending: true, progress: 0 });
+  saveChat(); bump();
+  return id;
+}
+export function billProgress(id, progress) {
+  const m = chatLog.find((x) => x.id === id);
+  if (m && m.pending) { m.progress = progress; bump(); }
+}
+
+/** Turns a read bill into records and replaces the "reading…" reply with the result.
+ *  Without a note: one record per item (scaled so they add up to what was paid), each with its category.
+ *  With a note that has no amount ("dinner with An, Bình"): the note describes the whole bill, with the bill's total. */
+export function finishBill(id, bill, { text = "" } = {}) {
+  const at = chatLog.findIndex((x) => x.id === id);
+  if (at < 0) return;
+  const date = bill.date && bill.date <= today() ? bill.date : today();
+  const shopCat = guessCat(bill.shop || "", false);
+  let items = [];
+  if (text.trim() && !/\d/.test(text) && bill.total > 0) {
+    items = localParse(`${text.trim()} ${bill.total}`).items.map((it) => ({ ...it, date }));
+  } else {
+    items = billRecords(bill, t("Bill")).map((x) => {
+      let category = EXP_CATS.includes(x.category) ? x.category : guessCat(x.name, false);
+      if (category === "Other") category = EXP_CATS.includes(bill.category) && bill.category !== "Other" ? bill.category : shopCat;
+      return { type: "expense", amount: x.amount, category, note: x.name, date };
+    });
+  }
+  const { made, notes } = applyItems(items);
+  const total = made.reduce((a, r) => a + ((r.col === "tx" ? S.tx[r.id]?.amount : S.bills[r.id]?.amount) || 0), 0);
+  let reply = made.length
+    ? t(bill.shop ? "Added {n} records from {shop}, {amt} in total." : "Added {n} records from the bill, {amt} in total.", { n: made.length, shop: bill.shop, amt: money(total) })
+    : t("I couldn't find any prices in this photo. Type the amount and I'll add it.");
+  if (notes.length) reply += "\n" + notes.join("\n");
+  chatLog[at] = { role: "bot", text: reply, made, via: bill.source };
+  saveChat(); bump();
+}
+export function failBill(id, message) {
+  const at = chatLog.findIndex((x) => x.id === id);
+  if (at < 0) return;
+  chatLog[at] = { role: "bot", text: message };
+  saveChat(); bump();
 }
 
 export function billMeta(b, D) {

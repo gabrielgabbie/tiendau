@@ -1,8 +1,8 @@
 // New / edit shared bill: who's sharing, how items split, fees & discounts, who paid, and a live breakdown.
 import { useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Minus, Plus, X } from "lucide-react";
-import { EXP_CATS, round, today, money, cur, isNum, adjAmount, ADJ_NAME, computeBill, finalizeBill, normalizeBill, t } from "@/core/index.js";
+import { ChevronDown, Minus, Plus, X } from "lucide-react";
+import { EXP_CATS, round, today, money, compact, cur, isNum, adjAmount, ADJ_NAME, computeBill, finalizeBill, normalizeBill, t } from "@/core/index.js";
 import { S } from "@/data/store.js";
 import { uid, ui, settings, findOrCreatePerson, findOrCreateEvent, saveBill, deleteBill } from "@/lib/model.js";
 import { cn } from "@/lib/utils";
@@ -12,8 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AppSheet, SheetActions, Field, Section, Segmented, Chip, ConfirmButton, Amt, useSheets } from "@/components/app/bits.jsx";
+import { AppSheet, SheetActions, Section, Segmented, Chip, ConfirmButton, Amt, DateField, Field, useSheets } from "@/components/app/bits.jsx";
 import { CategorySelect, SettleSheet } from "./records.jsx";
 
 const QUICK_ADJ = [
@@ -46,6 +45,7 @@ export function BillSheet({ id, ...sheet }) {
   const [eventSel, setEventSel] = useState(b?.eventId || NO_EVENT);
   const [eventNew, setEventNew] = useState("");
   const [newPerson, setNewPerson] = useState("");
+  const [feesOpen, setFeesOpen] = useState(!!b?.adjustments?.length);
   if (!b) return null;
   if (b.kind === "settle") return <SettleSheet b={b} {...sheet} />;
 
@@ -67,161 +67,185 @@ export function BillSheet({ id, ...sheet }) {
     close(); toast(t("Bill saved"));
   };
 
-  // breakdown
+  // one-line summaries for the collapsed sections
+  const subtotal = Number(b.subtotal) || 0;
+  const splitSummary = b.mode === "equal"
+    ? [t("Equally"), P.length && subtotal ? t("{amt} each", { amt: compact(subtotal / P.length) }) : ""].filter(Boolean).join(" · ")
+    : t(b.mode === "items" ? "By what each ordered" : "By shares");
+  const feesSummary = b.adjustments.length
+    ? b.adjustments.map((a) => { const v = adjAmount(a, subtotal); return `${ADJ_NAME(a)}${v ? " " + (v > 0 ? "+" : "−") + compact(Math.abs(v)) : ""}`; }).join(", ")
+    : t("None");
+  const paySummary = b.payers.length > 1 ? t("{n} people paid", { n: b.payers.length })
+    : b.payers[0]?.p === "me" ? t("You paid it all") : t("{name} paid it all", { name: nm(b.payers[0]?.p) });
   const rows = [...new Set([...P, ...Object.keys(r.paid)])];
-  const lines = [[t("Items"), r.subtotal], ...b.adjustments.map((a) => [ADJ_NAME(a) + (a.unit === "percent" && a.value ? ` ${a.value}%` : ""), round(adjAmount(a, r.subtotal))]).filter((x) => x[1])];
 
   return (
     <AppSheet {...sheet} title={t(id ? "Edit shared bill" : "New shared bill")}>
-      <Field label={t("What for")} htmlFor="bTitle"><Input id="bTitle" className="h-10" value={b.title} placeholder={t("Dinner, Grab Food order, villa…")} onChange={(e) => change(() => (b.title = e.target.value))} /></Field>
-      <div className="grid grid-cols-2 gap-2.5">
-        <Field label={t("Date")} htmlFor="bDate"><Input id="bDate" className="h-10" type="date" value={b.date} onChange={(e) => change(() => (b.date = e.target.value || today()))} /></Field>
-        <Field label={t("Category")} htmlFor="bCat"><CategorySelect id="bCat" value={b.category || "Food & Drinks"} onChange={(v) => change(() => (b.category = v))} cats={EXP_CATS} /></Field>
-      </div>
-      <Field label={t("Event")} htmlFor="bEvent">
-        <Select value={eventSel} onValueChange={setEventSel}>
-          <SelectTrigger id="bEvent" className="h-10 w-full"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NO_EVENT}>{t("No event")}</SelectItem>
-            {Object.values(S.events).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
-            <SelectItem value={NEW_EVENT}>{t("+ New event…")}</SelectItem>
-          </SelectContent>
-        </Select>
-        {eventSel === NEW_EVENT && <Input className="h-10" placeholder={t("Event name")} value={eventNew} onChange={(e) => setEventNew(e.target.value)} autoFocus />}
+      {/* the essentials: what, how much, when, which category/event */}
+      <Input id="bTitle" aria-label={t("What for")} className="h-11 text-base" value={b.title} placeholder={t("Dinner, Grab Food order, villa…")} onChange={(e) => change(() => (b.title = e.target.value))} />
+      <Field label={t("Items subtotal ({cur})", { cur: settings().currency })} htmlFor="bSub">
+        {/* a plain text field with the number keypad: no up/down arrows */}
+        <Input id="bSub" type="text" inputMode="decimal" autoComplete="off" placeholder="0" value={b.subtotal}
+          onChange={(e) => change(() => (b.subtotal = e.target.value.replace(/[^\d.]/g, "")))}
+          className="amt h-12 text-right text-xl md:text-xl" />
       </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <DateField id="bDate" value={b.date} onChange={(d) => change(() => (b.date = d || today()))} />
+        <CategorySelect id="bCat" value={b.category || "Food & Drinks"} onChange={(v) => change(() => (b.category = v))} cats={EXP_CATS} />
+      </div>
+      <Select value={eventSel} onValueChange={setEventSel}>
+        <SelectTrigger id="bEvent" aria-label={t("Event")} className="data-[size=default]:h-10 w-full"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_EVENT}>{t("No event")}</SelectItem>
+          {Object.values(S.events).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+          <SelectItem value={NEW_EVENT}>{t("+ New event…")}</SelectItem>
+        </SelectContent>
+      </Select>
+      {eventSel === NEW_EVENT && <Input className="h-10" placeholder={t("Event name")} value={eventNew} onChange={(e) => setEventNew(e.target.value)} autoFocus />}
 
       <Section title={t("Who's sharing")}>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {everyone.map((p) => (
             <Chip key={p.id} on={!!b.people[p.id]} onPressedChange={() => change(() => { if (b.people[p.id]) delete b.people[p.id]; else b.people[p.id] = { item: null, weight: 1 }; })}>{p.name}</Chip>
           ))}
-        </div>
-        <div className="flex gap-2">
-          <Input className="h-10" placeholder={t("Add a person")} value={newPerson} onChange={(e) => setNewPerson(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPerson(); } }} />
-          <Button variant="outline" className="h-10" onClick={addPerson}>{t("Add")}</Button>
+          <span className="flex h-8 items-center rounded-full border border-dashed border-foreground/20 pl-3 focus-within:border-ring">
+            <input className="w-28 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground" placeholder={t("+ Add a person")} aria-label={t("Add a person")} value={newPerson}
+              onChange={(e) => setNewPerson(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPerson(); } }} />
+            {newPerson.trim() && <button className="pr-2.5 text-[13px] font-semibold text-primary" onClick={addPerson}>{t("Add")}</button>}
+          </span>
         </div>
       </Section>
 
-      <Section title={t("Items")}>
-        <Field label={t("Items subtotal ({cur})", { cur: settings().currency })} htmlFor="bSub" hint={t("The bill before fees, service charge and discounts.")}>
-          <Input id="bSub" className="h-10" type="number" inputMode="decimal" min="0" step="any" value={b.subtotal} onChange={(e) => change(() => (b.subtotal = e.target.value))} />
-        </Field>
-        <Segmented label={t("How to split")} value={b.mode} onChange={(v) => change(() => (b.mode = v))} options={[["equal", t("Equally")], ["items", t("By what each ordered")], ["shares", t("By shares")]]} />
-        <p className="text-xs text-muted-foreground">{t(MODE_HINT[b.mode])}</p>
-        <div className="divide-y rounded-lg border bg-card">
-          {P.length ? P.map((p) => {
-            const o = b.people[p];
-            const base = b.mode === "items" && isNum(o.item) ? "" : (r.base[p] || r.base[p] === 0) && Number(b.subtotal) ? money(r.base[p]) : "";
+      {/* details stay folded until needed; each row shows what's set */}
+      <div className="flex flex-col divide-y rounded-[8px] border bg-card">
+        <Disclosure title={t("How to split")} summary={splitSummary} defaultOpen={b.mode !== "equal"}>
+          <Segmented label={t("How to split")} value={b.mode} onChange={(v) => change(() => (b.mode = v))} options={[["equal", t("Equally")], ["items", t("By what each ordered")], ["shares", t("By shares")]]} />
+          <p className="text-xs text-muted-foreground">{t(MODE_HINT[b.mode])}</p>
+          {b.mode !== "equal" && (
+            <div className="divide-y rounded-md border">
+              {P.length ? P.map((p) => {
+                const o = b.people[p];
+                return (
+                  <div key={p} className="flex items-center gap-2.5 px-3 py-1.5">
+                    <span className="flex-1">{nm(p)}</span>
+                    {b.mode === "items" && <Input className={cn(small, "w-[110px]")} type="number" min="0" step="any" inputMode="decimal" value={isNum(o.item) ? o.item : ""} placeholder={t("Rest")} aria-label={t("{name} ordered", { name: nm(p) })} onChange={(e) => change(() => (o.item = e.target.value === "" ? null : Number(e.target.value)))} />}
+                    {b.mode === "shares" && (
+                      <span className="inline-flex items-center gap-1">
+                        <Button variant="outline" size="icon-sm" aria-label={t("Fewer shares")} onClick={() => change(() => (o.weight = Math.max(0, (isNum(o.weight) ? Number(o.weight) : 1) - 1)))}><Minus /></Button>
+                        <Input className={cn(small, "w-12 text-center")} type="number" min="0" step="0.5" value={isNum(o.weight) ? o.weight : 1} aria-label={t("{name} shares", { name: nm(p) })} onChange={(e) => change(() => (o.weight = e.target.value === "" ? 1 : Number(e.target.value)))} />
+                        <Button variant="outline" size="icon-sm" aria-label={t("More shares")} onClick={() => change(() => (o.weight = (isNum(o.weight) ? Number(o.weight) : 1) + 1))}><Plus /></Button>
+                      </span>
+                    )}
+                  </div>
+                );
+              }) : <div className="px-3 py-2 text-muted-foreground">{t("Pick people above.")}</div>}
+            </div>
+          )}
+        </Disclosure>
+
+        <Disclosure title={t("Fees & discounts")} summary={feesSummary} open={feesOpen} onOpenChange={setFeesOpen}>
+          {b.adjustments.map((a, i) => {
+            const v = adjAmount(a, subtotal);
             return (
-              <div key={p} className="flex items-center gap-2.5 px-3 py-2">
-                <span className="flex-1 font-medium">{nm(p)}</span>
-                {b.mode === "items" && <Input className={cn(small, "w-[110px]")} type="number" min="0" step="any" inputMode="decimal" value={isNum(o.item) ? o.item : ""} placeholder={t("Rest")} aria-label={t("{name} ordered", { name: nm(p) })} onChange={(e) => change(() => (o.item = e.target.value === "" ? null : Number(e.target.value)))} />}
-                {b.mode === "shares" && (
-                  <span className="inline-flex items-center gap-1">
-                    <Button variant="outline" size="icon-sm" aria-label={t("Fewer shares")} onClick={() => change(() => (o.weight = Math.max(0, (isNum(o.weight) ? Number(o.weight) : 1) - 1)))}><Minus /></Button>
-                    <Input className={cn(small, "w-14 text-center")} type="number" min="0" step="0.5" value={isNum(o.weight) ? o.weight : 1} aria-label={t("{name} shares", { name: nm(p) })} onChange={(e) => change(() => (o.weight = e.target.value === "" ? 1 : Number(e.target.value)))} />
-                    <Button variant="outline" size="icon-sm" aria-label={t("More shares")} onClick={() => change(() => (o.weight = (isNum(o.weight) ? Number(o.weight) : 1) + 1))}><Plus /></Button>
-                  </span>
-                )}
-                <Amt className="min-w-20 text-right text-[13px] text-muted-foreground">{base}</Amt>
+              <div key={a.id} className={cn("flex flex-col gap-1.5 rounded-md border p-2", a.type === "discount" && "border-dashed")}>
+                <div className="flex items-center gap-1.5">
+                  <Input className={cn(small, "min-w-0 flex-1")} value={a.label} placeholder={t(a.type === "discount" ? "Discount" : "Fee")} aria-label={t("Name")} onChange={(e) => change(() => (a.label = e.target.value))} />
+                  <Input id={`adjv-${a.id}`} className={cn(small, "w-20 text-right")} type="number" min="0" step="any" inputMode="decimal" value={a.value} aria-label={t("Amount")} onChange={(e) => change(() => (a.value = e.target.value))} />
+                  <Segmented size="sm" className="w-16" label={t("Unit")} value={a.unit} onChange={(u) => change(() => (a.unit = u))} options={[["amount", cur().sym], ["percent", "%"]]} />
+                  <Button variant="ghost" size="icon-sm" aria-label={t("Remove {name}", { name: ADJ_NAME(a) })} onClick={() => change(() => b.adjustments.splice(i, 1))}><X /></Button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Segmented size="sm" className="w-36" label={t("Fee or discount")} value={a.type} onChange={(ty) => change(() => (a.type = ty))} options={[["fee", t("Fee")], ["discount", t("Discount")]]} />
+                  <Select value={a.alloc} onValueChange={(al) => change(() => (a.alloc = al))}>
+                    <SelectTrigger size="sm" className="min-w-0 flex-1 bg-background text-xs" aria-label={t("How to split")}><SelectValue /></SelectTrigger>
+                    <SelectContent>{Object.entries(ALLOC_LABEL).map(([k, l]) => <SelectItem key={k} value={k}>{t(l)}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {a.alloc === "person" && (
+                    <Select value={a.person || ""} onValueChange={(p) => change(() => (a.person = p || null))}>
+                      <SelectTrigger size="sm" className="w-24 bg-background text-xs" aria-label={t("Who covers it")}><SelectValue placeholder={t("Who?")} /></SelectTrigger>
+                      <SelectContent>{P.map((p) => <SelectItem key={p} value={p}>{nm(p)}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
+                  <Amt className={cn("ml-auto text-xs whitespace-nowrap", v < 0 && "text-earn")}>{v ? compact(Math.abs(v)) : ""}</Amt>
+                </div>
               </div>
             );
-          }) : <div className="px-3 py-2 text-muted-foreground">{t("Pick people above.")}</div>}
-        </div>
-      </Section>
+          })}
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_ADJ.map(([l, o]) => (
+              <Chip key={l} className="h-7 px-2.5 text-xs" onPressedChange={() => { const a = Object.assign({ id: uid(), label: t(l.replace(" %", "")) }, o); change(() => b.adjustments.push(a)); setTimeout(() => document.getElementById(`adjv-${a.id}`)?.focus()); }}>+ {t(l)}</Chip>
+            ))}
+          </div>
+        </Disclosure>
 
-      <Section title={t("Fees & discounts")}>
-        {b.adjustments.map((a, i) => {
-          const v = adjAmount(a, Number(b.subtotal) || 0);
-          return (
-            <div key={a.id} className={cn("flex flex-col gap-2 rounded-xl border bg-card p-2.5", a.type === "discount" && "border-dashed")}>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input className={cn(small, "min-w-0 flex-[1_1_120px]")} value={a.label} placeholder={t(a.type === "discount" ? "Discount" : "Fee")} aria-label={t("Name")} onChange={(e) => change(() => (a.label = e.target.value))} />
-                <Segmented size="sm" label={t("Fee or discount")} value={a.type} onChange={(ty) => change(() => (a.type = ty))} options={[["fee", t("Fee")], ["discount", t("Discount")]]} />
-                <Button variant="ghost" size="icon-sm" aria-label={t("Remove {name}", { name: ADJ_NAME(a) })} onClick={() => change(() => b.adjustments.splice(i, 1))}><X /></Button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input id={`adjv-${a.id}`} className={cn(small, "w-[120px]")} type="number" min="0" step="any" inputMode="decimal" value={a.value} aria-label={t("Amount")} onChange={(e) => change(() => (a.value = e.target.value))} />
-                <Segmented size="sm" label={t("Unit")} value={a.unit} onChange={(u) => change(() => (a.unit = u))} options={[["amount", cur().sym], ["percent", "%"]]} />
-                <Amt className={cn("ml-auto text-[13px]", v < 0 && "text-earn")}>{v ? money(v, { sign: true }) : ""}</Amt>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Select value={a.alloc} onValueChange={(al) => change(() => (a.alloc = al))}>
-                  <SelectTrigger size="sm" className="min-w-0 flex-[1_1_140px] bg-background" aria-label={t("How to split")}><SelectValue /></SelectTrigger>
-                  <SelectContent>{Object.entries(ALLOC_LABEL).map(([k, l]) => <SelectItem key={k} value={k}>{t(l)}</SelectItem>)}</SelectContent>
-                </Select>
-                {a.alloc === "person" && (
-                  <Select value={a.person || ""} onValueChange={(p) => change(() => (a.person = p || null))}>
-                    <SelectTrigger size="sm" className="min-w-0 flex-[1_1_140px] bg-background" aria-label={t("Who covers it")}><SelectValue placeholder={t("Who?")} /></SelectTrigger>
-                    <SelectContent>{P.map((p) => <SelectItem key={p} value={p}>{nm(p)}</SelectItem>)}</SelectContent>
-                  </Select>
-                )}
-              </div>
+        <Disclosure title={t("Who paid")} summary={paySummary} defaultOpen={b.payers.length > 1}>
+          {b.payers.map((x, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Select value={x.p} onValueChange={(p) => change(() => (x.p = p))}>
+                <SelectTrigger className="h-9 min-w-0 flex-1" aria-label={t("Payer")}><SelectValue /></SelectTrigger>
+                <SelectContent>{everyone.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+              </Select>
+              <Input className="h-9 w-[40%]" type="number" min="0" step="any" inputMode="decimal" value={isNum(x.amount) ? x.amount : ""} placeholder={t(b.payers.length > 1 ? "The rest" : "Full amount")} aria-label={t("Amount paid")} onChange={(e) => change(() => (x.amount = e.target.value === "" ? null : Number(e.target.value)))} />
+              {b.payers.length > 1 && <Button variant="ghost" size="icon-sm" aria-label={t("Remove payer")} onClick={() => change(() => b.payers.splice(i, 1))}><X /></Button>}
             </div>
-          );
-        })}
-        <div className="flex flex-wrap gap-2">
-          {QUICK_ADJ.map(([l, o]) => (
-            <Chip key={l} onPressedChange={() => { const a = Object.assign({ id: uid(), label: t(l.replace(" %", "")) }, o); change(() => b.adjustments.push(a)); setTimeout(() => document.getElementById(`adjv-${a.id}`)?.focus()); }}>+ {t(l)}</Chip>
           ))}
-        </div>
-      </Section>
-
-      <Section title={t("Who paid")}>
-        {b.payers.map((x, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <Select value={x.p} onValueChange={(p) => change(() => (x.p = p))}>
-              <SelectTrigger className="h-10 min-w-0 flex-1" aria-label={t("Payer")}><SelectValue /></SelectTrigger>
-              <SelectContent>{everyone.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-            </Select>
-            <Input className="h-10 w-[42%]" type="number" min="0" step="any" inputMode="decimal" value={isNum(x.amount) ? x.amount : ""} placeholder={t(b.payers.length > 1 ? "The rest" : "Full amount")} aria-label={t("Amount paid")} onChange={(e) => change(() => (x.amount = e.target.value === "" ? null : Number(e.target.value)))} />
-            {b.payers.length > 1 && <Button variant="ghost" size="icon-sm" aria-label={t("Remove payer")} onClick={() => change(() => b.payers.splice(i, 1))}><X /></Button>}
+          <div className="flex items-center justify-between gap-2">
+            <Button variant="link" className="h-auto p-0" onClick={() => change(() => { const used = new Set(b.payers.map((y) => y.p)); const next = everyone.find((p) => !used.has(p.id)) || everyone[0]; b.payers.push({ p: next.id, amount: null }); })}>{t("+ Add another payer")}</Button>
+            {b.payers.length > 1 && <span className="text-xs text-muted-foreground">{t("Empty = pays the rest")}</span>}
           </div>
-        ))}
-        <Button variant="link" className="h-auto self-start p-0" onClick={() => change(() => { const used = new Set(b.payers.map((y) => y.p)); const next = everyone.find((p) => !used.has(p.id)) || everyone[0]; b.payers.push({ p: next.id, amount: null }); })}>{t("+ Add another payer")}</Button>
-        <p className="text-xs text-muted-foreground">{t("Leave an amount empty and that person covers the rest.")}</p>
-      </Section>
-
-      <Section title={t("Breakdown")}>
-        <div id="bPrev" className="flex flex-col gap-2">
-          {r.errs.length > 0 && (
-            <Alert variant="destructive" className="border-0 bg-spend/10"><AlertDescription><ul className="flex flex-col gap-1">{r.errs.map((e) => <li key={e}>{e}</li>)}</ul></AlertDescription></Alert>
-          )}
-          <div className="flex flex-col rounded-xl border bg-card px-3 py-1.5 text-sm">
-            {lines.map(([l, v], i) => <div key={l + i} className="flex justify-between gap-2.5 py-1"><span>{l}</span><Amt className={cn(v < 0 && "text-earn")}>{i ? money(v, { sign: true }) : money(v)}</Amt></div>)}
-            <div className="mt-0.5 flex justify-between gap-2.5 border-t border-foreground pt-2 pb-1 font-bold"><span>{t("Total")}</span><Amt>{money(r.total)}</Amt></div>
-          </div>
-          {rows.length > 0 && (
-            <Table className="text-sm">
-              <TableHeader><TableRow>{[t("Person"), t("Share"), t("Paid"), t("This bill")].map((h, i) => <TableHead key={h} className={cn("text-[11px] font-semibold tracking-wide text-muted-foreground uppercase", i && "text-right")}>{h}</TableHead>)}</TableRow></TableHeader>
-              <TableBody>
-                {rows.map((p) => {
-                  const base = round(r.base[p] || 0), adj = round(r.adj[p] || 0), share = r.shares[p] || 0, paid = r.paid[p] || 0, net = round(paid - share);
-                  return (
-                    <TableRow key={p} className="align-top">
-                      <TableCell className="whitespace-normal">{nm(p)}</TableCell>
-                      <TableCell className="amt text-right">{money(share)}<small className="block text-[11px] text-muted-foreground">{money(base)}{adj ? ` ${adj > 0 ? "+" : "−"} ${money(Math.abs(adj))}` : ""}</small></TableCell>
-                      <TableCell className="amt text-right">{paid ? money(paid) : "—"}</TableCell>
-                      <TableCell className={cn("amt text-right", net > 0 && "text-earn", net < 0 && "text-spend")}>{Math.abs(net) < 0.01 ? t("Even") : t(net > 0 ? "gets {amt}" : "owes {amt}", { amt: money(Math.abs(net)) })}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </Section>
-
-      <div className="flex items-center gap-2.5">
-        <Checkbox id="bLog" checked={logPaid && (r.paid.me || 0) > 0} disabled={!(r.paid.me > 0)} onCheckedChange={(v) => setLogPaid(!!v)} />
-        <Label htmlFor="bLog" className="text-[15px] leading-snug font-normal">
-          {r.paid.me > 0 ? t("Add the {amt} I paid to my ledger", { amt: money(r.paid.me) }) : t("You didn't pay for this bill, so nothing goes into your ledger.")}
-        </Label>
+        </Disclosure>
       </div>
+
+      {/* what each person ends up with */}
+      <div id="bPrev" className="flex flex-col gap-2">
+        {r.errs.length > 0 && (
+          <Alert variant="destructive" className="border-0 bg-spend/10"><AlertDescription><ul className="flex flex-col gap-1">{r.errs.map((e) => <li key={e}>{e}</li>)}</ul></AlertDescription></Alert>
+        )}
+        {rows.length > 0 && subtotal > 0 && (
+          <div className="flex flex-col rounded-[8px] border bg-card px-3 py-1">
+            {rows.map((p) => {
+              const share = r.shares[p] || 0, net = round((r.paid[p] || 0) - share);
+              return (
+                <div key={p} className="flex items-center gap-2 border-b border-border/60 py-2 text-sm last:border-b-0">
+                  <span className="min-w-0 flex-1 truncate">{nm(p)}</span>
+                  <Amt className="text-muted-foreground">{money(share)}</Amt>
+                  <span className={cn("w-[7.5rem] text-right text-xs", net > 0 && "text-earn", net < 0 && "text-spend", Math.abs(net) < 0.01 && "text-muted-foreground")}>
+                    {Math.abs(net) < 0.01 ? t("Even") : t(net > 0 ? "gets {amt}" : "owes {amt}", { amt: compact(Math.abs(net)) })}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {r.paid.me > 0 && (
+        <div className="flex items-center gap-2.5">
+          <Checkbox id="bLog" checked={logPaid} onCheckedChange={(v) => setLogPaid(!!v)} />
+          <Label htmlFor="bLog" className="text-[13px] leading-snug font-normal text-muted-foreground">{t("Add the {amt} I paid to my ledger", { amt: money(r.paid.me) })}</Label>
+        </div>
+      )}
       <SheetActions left={id && <ConfirmButton label={t("Delete")} confirmLabel={t("Tap again to delete")} onConfirm={() => { deleteBill(id); close(); toast(t("Bill deleted")); }} />}>
         <Button variant="outline" onClick={close}>{t("Cancel")}</Button>
-        <Button onClick={save}>{t("Save")}</Button>
+        <Button onClick={save}>{t("Save")}{r.total > 0 && <span className="amt font-normal opacity-80">· {money(r.total)}</span>}</Button>
       </SheetActions>
     </AppSheet>
+  );
+}
+
+/** A folded section: title and a one-line summary; tapping opens the controls underneath. */
+function Disclosure({ title, summary, defaultOpen = false, open: openProp, onOpenChange, children }) {
+  const [own, setOwn] = useState(defaultOpen);
+  const open = openProp ?? own;
+  const toggle = () => (onOpenChange ? onOpenChange(!open) : setOwn(!open));
+  return (
+    <div>
+      <button type="button" aria-expanded={open} onClick={toggle} className="flex w-full items-center gap-3 px-3 py-3 text-left">
+        <span className="font-medium">{title}</span>
+        <span className="ml-auto min-w-0 truncate text-[13px] text-muted-foreground">{summary}</span>
+        <ChevronDown className={cn("size-4 flex-none text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && <div className="flex flex-col gap-2.5 px-3 pb-3">{children}</div>}
+    </div>
   );
 }

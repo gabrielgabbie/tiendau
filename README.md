@@ -18,7 +18,7 @@ You need a free Supabase account, a free hosting account (Vercel or Netlify), an
 ### 1. Create the database
 
 1. Go to [supabase.com](https://supabase.com) → **New project**. Pick a region close to you (Singapore for Vietnam) and save the database password somewhere safe.
-2. Open **SQL Editor → New query**, paste everything from `supabase/migrations/0001_init.sql`, and press **Run**. Then do the same with `supabase/migrations/0002_event_photos.sql` (event cover photos). If your database was set up before, run just `0002`.
+2. Open **SQL Editor → New query**, paste everything from `supabase/migrations/0001_init.sql`, and press **Run**.
    This creates the tables, makes every row private to its owner (Row Level Security), turns on live sync, and adds the "delete my account" function.
 3. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key.
 
@@ -91,6 +91,7 @@ src/
     dates.js       date helpers
     categories.js  categories and the Vietnamese/English keyword matcher
     parser.js      quick add: text → records
+    receipt.js     reading a scanned receipt: shop, total and date from OCR text
     bills.js       bill splitting, balances, settle-up suggestions
   data/
     supabase.js    Supabase client and which sign-in buttons to show
@@ -99,6 +100,8 @@ src/
     model.js       app logic the screens share: demo data, chat → records, ledger filters
     auth-errors.js plain-language sign-in errors
     use-speech.js  voice input via the browser's speech recognition (Chrome, Edge, Safari)
+    ocr.js         on-device receipt reading (Tesseract; engine + vi/en data load from jsDelivr on first use, then cached)
+    ai-receipt.js  "Read with AI": sends a shrunken bill photo to /api/read-receipt
     utils.js       cn() class helper used by shadcn/ui
   components/
     ui/            shadcn/ui components (React + Tailwind), themed in styles.css
@@ -106,8 +109,8 @@ src/
   App.jsx        app shell: sign-in or the app, header, tabs, the open sheet
   main.jsx       start-up
   styles.css     Tailwind + shadcn theme tokens (jade palette, light and dark)
+api/read-receipt.js                 Vercel function: reads a bill photo with Claude (needs ANTHROPIC_API_KEY)
 supabase/migrations/0001_init.sql   tables, privacy rules, live sync
-supabase/migrations/0002_event_photos.sql   cover photos for events
 tests/core.test.js                  tests for the core logic (npm test)
 tests/model.test.js                 tests for shared bills and quick add, in both languages
 ```
@@ -132,3 +135,13 @@ When you build an Expo / React Native app:
 - Sign-in buttons are plain text. If you want the official Google and Apple button styles, follow their branding guidelines (Google Identity "Sign in with Google" branding, Apple "Sign in with Apple" Human Interface Guidelines).
 - Quick-add history is stored per device and isn't synced; the records it creates are.
 - `npm test` runs the core tests; `npm run build` makes the production files in `dist/`.
+
+## Reading bills with AI (optional)
+
+When you send a bill photo in Ghi, it is read by Claude if this is set up (a smaller copy of the photo is sent; far better on faded, crumpled or unusual bills, about a cent per photo, billed to your Anthropic account), and otherwise on the phone for free.
+
+1. Create an API key at https://console.anthropic.com → **API Keys**.
+2. In Vercel → your project → **Settings → Environment Variables** (on newer dashboards: **Environments → Production**), add `ANTHROPIC_API_KEY` with that key. Do **not** prefix it with `VITE_` — it must stay on the server.
+3. Redeploy. To test locally, put `ANTHROPIC_API_KEY=...` in `.env` and restart `npm run dev`.
+
+Without a key, bills are simply read on the phone.

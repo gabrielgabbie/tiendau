@@ -70,3 +70,39 @@ test("a shared bill typed in chat logs the full amount I paid", () => {
   assert.ok(rec, "ledger record for the bill");
   assert.equal(rec.amount, 1200000);
 });
+
+test("a scanned receipt's category hint fills in when the text alone can't tell", () => {
+  model.send("Pho Thin Lo Duc 130.000đ", { categoryHint: "Food & Drinks" });
+  const rec = Object.values(store.S.tx).find((x) => x.note === "Pho Thin Lo Duc");
+  assert.equal(rec.category, "Food & Drinks");
+  model.send("Highlands Coffee 64.000đ", { categoryHint: "Shopping" });
+  assert.equal(Object.values(store.S.tx).find((x) => x.note === "Highlands Coffee").category, "Food & Drinks", "a clear match beats the hint");
+});
+
+test("a bill photo becomes one record per item, adding up to what was paid, on the bill's date", () => {
+  const before = Object.keys(store.S.tx).length;
+  const id = model.startBill({ thumb: "data:image/jpeg;base64,AA", text: "" });
+  assert.ok(model.chatLog.at(-1).pending, "shows a reading… reply");
+  model.finishBill(id, { shop: "Bách Hóa Xanh", total: 110000, date: "2026-10-20", category: "Food & Drinks",
+    items: [{ name: "Rau muống", amount: 15000 }, { name: "Thịt heo", amount: 72500 }, { name: "Nước rửa chén", amount: 32000, category: "Shopping" }] });
+  const made = model.chatLog.at(-1).made.map((r) => store.S.tx[r.id]);
+  assert.equal(Object.keys(store.S.tx).length, before + 3);
+  assert.equal(made.reduce((a, x) => a + x.amount, 0), 110000, "discount spread across items");
+  assert.ok(made.every((x) => x.date === "2026-10-20"));
+  assert.equal(made.find((x) => x.note === "Nước rửa chén").category, "Shopping", "each item keeps its own category");
+  assert.equal(made.find((x) => x.note === "Rau muống").category, "Food & Drinks");
+});
+
+test("a bill photo with a note like 'dinner with Minh' becomes one shared bill for the total", () => {
+  const id = model.startBill({ thumb: "", text: "lẩu với Minh" });
+  model.finishBill(id, { shop: "Lẩu Phan", total: 600000, date: null, items: [{ name: "Lẩu thái", amount: 600000 }] }, { text: "lẩu với Minh" });
+  const [r] = model.chatLog.at(-1).made;
+  assert.equal(r.col, "bills");
+  assert.equal(store.S.bills[r.id].amount, 600000);
+});
+
+test("a photo with no prices says so instead of adding anything", () => {
+  const id = model.startBill({ thumb: "", text: "" });
+  model.finishBill(id, { shop: "", total: null, items: [] });
+  assert.equal(model.chatLog.at(-1).made.length, 0);
+});

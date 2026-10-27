@@ -110,3 +110,8 @@
   -webkit-mask: radial-gradient(circle 4px at 6px 0, #0000 98%, #000) -6px 0/12px 100% repeat-x;
   mask: radial-gradient(circle 4px at 6px 0, #0000 98%, #000) -6px 0/12px 100% repeat-x;
 }
+
+/* number fields: no up/down arrows, just type the number */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }

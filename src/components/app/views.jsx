@@ -1,18 +1,19 @@
 // The three screens: Log (quick add by chat), Ledger, Split.
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowUp, Mic, Square, ImagePlus, Plus, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ListFilter, Pencil, X } from "lucide-react";
+import { ArrowUp, Mic, Square, Loader2, ImagePlus, Plus, Folder, FolderPlus, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ListFilter, Pencil, X } from "lucide-react";
 import { money, compact, fmtDate, cur, balances, settlePlan, today, t, getLang } from "@/core/index.js";
+import { readBill, billThumb } from "@/lib/bill-reader.js";
 import { useSpeech } from "@/lib/use-speech.js";
 import { S, put, del, LS } from "@/data/store.js";
-import { ui, chatLog, data, send, pname, billMeta, uid, bump, saveL, settings, saveSettle, deleteBill, SORTS, periodRange, periodLabel, stepPeriod, filterLabel, filterOn, clearFilter } from "@/lib/model.js";
+import { ui, chatLog, data, send, startBill, billProgress, finishBill, failBill, pname, billMeta, uid, bump, saveL, settings, saveSettle, deleteBill, SORTS, periodRange, periodLabel, stepPeriod, filterLabel, filterOn, clearFilter } from "@/lib/model.js";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CatBadge, CatIcon, catColor, Chip, Amt, EventCover, AppSheet, useSheets } from "@/components/app/bits.jsx";
+import { CatBadge, CatIcon, catColor, Chip, Amt, eventTones, AppSheet, useSheets } from "@/components/app/bits.jsx";
 import { TxSheet, EventSheet } from "@/components/app/sheets/records.jsx";
 import { BillSheet } from "@/components/app/sheets/bill.jsx";
 import { DatePickerSheet, FilterSheet } from "@/components/app/sheets/pickers.jsx";
@@ -109,11 +110,19 @@ export function ChatView({ say }) {
   return (
     <div className="flex flex-col gap-2.5 pt-1">
       {chatLog.map((m, i) => m.role === "me"
-        ? <div key={i} className="max-w-[86%] self-end rounded-2xl rounded-br-[5px] bg-primary px-[13px] py-[9px] break-words whitespace-pre-wrap text-primary-foreground">{m.text}</div>
-        : <div key={i} className="contents">
-            <div className="max-w-[86%] self-start rounded-2xl rounded-bl-[5px] border bg-card px-[13px] py-[9px] break-words whitespace-pre-wrap">{m.text}</div>
-            {m.made?.length > 0 && <div className="receipt w-[min(100%,330px)] self-start rounded-t-[4px] rounded-b-xl border bg-card px-3 pt-3 pb-2">{m.made.map((r) => <ReceiptRow key={r.id} r={r} />)}</div>}
-          </div>)}
+        ? <div key={i} className="flex max-w-[86%] flex-col items-end gap-1 self-end">
+            {m.image && <img src={m.image} alt={t("Bill photo")} className="max-h-56 w-auto max-w-[220px] rounded-2xl rounded-br-[5px] border object-cover" />}
+            {m.text && <div className="rounded-2xl rounded-br-[5px] bg-primary px-[13px] py-[9px] break-words whitespace-pre-wrap text-primary-foreground">{m.text}</div>}
+          </div>
+        : m.pending
+          ? <div key={i} role="status" className="flex max-w-[86%] items-center gap-2 self-start rounded-2xl rounded-bl-[5px] border bg-card px-[13px] py-[9px] text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />{t("Reading the bill…")}{m.progress > 0 && <Amt className="text-xs">{Math.round(m.progress * 100)}%</Amt>}
+            </div>
+          : <div key={i} className="contents">
+              <div className="max-w-[86%] self-start rounded-2xl rounded-bl-[5px] border bg-card px-[13px] py-[9px] break-words whitespace-pre-wrap">{m.text}</div>
+              {m.made?.length > 0 && <div className="receipt w-[min(100%,330px)] self-start rounded-t-[4px] rounded-b-xl border bg-card px-3 pt-3 pb-2">{m.made.map((r) => <ReceiptRow key={r.id} r={r} />)}</div>}
+              {m.via && <span className="-mt-1.5 self-start px-1 text-[11px] text-muted-foreground">{t(m.via === "ai" ? "Read with AI" : "Read on this phone")}</span>}
+            </div>)}
     </div>
   );
 }
@@ -126,10 +135,20 @@ const SPEECH_ERRORS = {
   network: "Voice input needs an internet connection.",
 };
 
-/** The main action: a large box to type or speak records, with mic and send. */
-export function Composer({ inputRef, text, setText }) {
+/** The main action: a large box to type or speak records, with a receipt scanner, mic and send. */
+export function Composer({ inputRef, text, setText, onHeight }) {
   const base = useRef("");
+  const root = useRef(null);
+  const file = useRef(null);
+  // a bill photo attached to the next message: { file, url }
+  const [attached, setAttached] = useState(null);
   const update = (v) => { setText(v); LS.set("pl-draft", v); };
+  const attach = (e) => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    setAttached((a) => { if (a) URL.revokeObjectURL(a.url); return { file: f, url: URL.createObjectURL(f) }; });
+    setTimeout(() => inputRef.current?.focus());
+  };
+  const detach = () => setAttached((a) => { if (a) URL.revokeObjectURL(a.url); return null; });
   const speech = useSpeech({
     lang: getLang() === "vi" ? "vi-VN" : "en-US",
     onText: (heard) => update(base.current ? `${base.current}, ${heard}` : heard),
@@ -137,7 +156,34 @@ export function Composer({ inputRef, text, setText }) {
   });
   const grow = () => { const el = inputRef.current; if (!el) return; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 132) + "px"; };
   useEffect(grow, [text]);
-  const go = () => { if (speech.listening) speech.stop(); if (!text.trim()) return; send(text); update(""); };
+  // the box floats over the chat, so the chat needs to know how much room to leave at the bottom
+  useEffect(() => {
+    const el = root.current; if (!el || !onHeight) return;
+    const ro = new ResizeObserver(() => onHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => { ro.disconnect(); onHeight(0); };
+  }, [onHeight]);
+  const sendBill = async (att, note) => {
+    let id;
+    try {
+      id = startBill({ thumb: await billThumb(att.file), text: note });
+      const bill = await readBill(att.file, (p) => billProgress(id, p));
+      finishBill(id, bill, { text: note });
+    } catch (err) {
+      console.error(err);
+      const msg = t("Couldn't read that photo. Check your connection the first time, then try again.");
+      if (id) failBill(id, msg); else toast(msg);
+    } finally {
+      URL.revokeObjectURL(att.url);
+    }
+  };
+  const go = () => {
+    if (speech.listening) speech.stop();
+    if (attached) { sendBill(attached, text); setAttached(null); update(""); return; }
+    if (!text.trim()) return;
+    send(text);
+    update("");
+  };
   const mic = () => {
     if (!speech.supported) { toast(t("Voice input isn't supported in this browser. Try Chrome or Safari.")); return; }
     if (speech.listening) { speech.stop(); return; }
@@ -145,32 +191,47 @@ export function Composer({ inputRef, text, setText }) {
     speech.start();
   };
   return (
-    <div className="bg-background px-[max(12px,env(safe-area-inset-left,0px))] pt-1 pb-2">
-      <p className={cn("mb-1.5 px-4 text-xs font-medium text-spend", !speech.listening && "sr-only")} role="status">{speech.listening ? t("Listening… tap the red button when you're done.") : ""}</p>
-      <div className={cn("flex items-end gap-1.5 rounded-[28px] border bg-card p-1.5 pl-4 shadow-lg shadow-black/10 transition-shadow focus-within:border-primary/60 focus-within:ring-[3px] focus-within:ring-ring/25", speech.listening && "border-primary ring-[3px] ring-ring/30")}>
-        <Textarea
-          ref={inputRef}
-          rows={1}
-          value={text}
-          placeholder={speech.listening ? t("Listening… say “phở 55 nghìn”") : t("e.g. lunch 65k, grab 32k")}
-          aria-label={t("Log something")}
-          className="max-h-[132px] min-h-12 flex-1 resize-none border-0 bg-transparent px-0 py-3 text-base leading-[1.35] shadow-none focus-visible:ring-0 dark:bg-transparent"
-          onChange={(e) => update(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
-        />
-        <Button
-          type="button"
-          variant={speech.listening ? "destructive" : "secondary"}
-          size="icon"
-          className={cn("relative size-12 flex-none rounded-full", speech.listening && "bg-spend text-white hover:bg-spend/90 dark:bg-spend")}
-          aria-label={speech.listening ? t("Stop listening") : t("Speak")}
-          aria-pressed={speech.listening}
-          onClick={mic}
-        >
-          {speech.listening && <span className="absolute inset-0 animate-ping rounded-full bg-spend/40 motion-reduce:hidden" aria-hidden="true" />}
-          {speech.listening ? <Square className="size-4 fill-current" /> : <Mic className="size-[22px]" />}
-        </Button>
-        <Button size="icon" className="size-12 flex-none rounded-full" aria-label={t("Send")} disabled={!text.trim()} onClick={go}><ArrowUp className="size-[22px]" strokeWidth={2.4} /></Button>
+    // floats above the bottom buttons with nothing behind it; the chat scrolls underneath
+    <div ref={root} className="pointer-events-none absolute inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom,0px))] flex flex-col items-stretch px-[max(12px,env(safe-area-inset-left,0px))]">
+      <p className={cn("pointer-events-auto mb-1.5 self-start rounded-full bg-card/90 px-3 py-1 text-xs font-medium text-spend shadow-sm backdrop-blur", !speech.listening && "sr-only")} role="status">{speech.listening ? t("Listening… tap the red button when you're done.") : ""}</p>
+      <div className={cn("pointer-events-auto flex flex-col rounded-[28px] border bg-card p-1.5 shadow-lg shadow-black/10 transition-shadow focus-within:border-primary/60 focus-within:ring-[3px] focus-within:ring-ring/25", speech.listening && "border-primary ring-[3px] ring-ring/30")}>
+        {attached && (
+          // the attached bill photo, sent with the next message
+          <div className="relative mx-2 mt-1.5 mb-1 self-start">
+            <img src={attached.url} alt={t("Bill photo")} className="h-20 w-auto max-w-40 rounded-[12px] border object-cover" />
+            <button type="button" onClick={detach} aria-label={t("Remove photo")}
+              className="absolute -top-2 -right-2 grid size-6 place-items-center rounded-full bg-foreground text-background shadow ring-2 ring-card"><X className="size-3.5" strokeWidth={2.5} /></button>
+          </div>
+        )}
+        <div className="flex items-end gap-1.5">
+          <Button type="button" variant="ghost" size="icon" className="size-12 flex-none rounded-full text-muted-foreground" aria-label={t("Add a bill photo")} title={t("Add a bill photo")} onClick={() => file.current.click()}>
+            <ImagePlus className="size-[22px]" />
+          </Button>
+          <input ref={file} type="file" accept="image/*" hidden onChange={attach} />
+          <Textarea
+            ref={inputRef}
+            rows={1}
+            value={text}
+            placeholder={speech.listening ? t("Listening… say “phở 55 nghìn”") : attached ? t("Note (optional)") : t("e.g. lunch 65k, grab 32k")}
+            aria-label={t("Log something")}
+            className="max-h-[132px] min-h-12 flex-1 resize-none border-0 bg-transparent px-0 py-3 text-base leading-[1.35] shadow-none focus-visible:ring-0 dark:bg-transparent"
+            onChange={(e) => update(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } }}
+          />
+          <Button
+            type="button"
+            variant={speech.listening ? "destructive" : "secondary"}
+            size="icon"
+            className={cn("relative size-12 flex-none rounded-full", speech.listening && "bg-spend text-white hover:bg-spend/90 dark:bg-spend")}
+            aria-label={speech.listening ? t("Stop listening") : t("Speak")}
+            aria-pressed={speech.listening}
+            onClick={mic}
+          >
+            {speech.listening && <span className="absolute inset-0 animate-ping rounded-full bg-spend/40 motion-reduce:hidden" aria-hidden="true" />}
+            {speech.listening ? <Square className="size-4 fill-current" /> : <Mic className="size-[22px]" />}
+          </Button>
+          <Button size="icon" className="size-12 flex-none rounded-full" aria-label={t("Send")} disabled={!text.trim() && !attached} onClick={go}><ArrowUp className="size-[22px]" strokeWidth={2.4} /></Button>
+        </div>
       </div>
     </div>
   );
@@ -350,25 +411,43 @@ const settleRow = (b, D, onClick) => (
     sub={`${t("Settle up")} · ${fmtDate(b.date)}`} amount={money(b.amount)} label={t("Edit payment")} onClick={onClick} soft />
 );
 
-/** A photo card for an event on the Split overview. */
+/** The event page's header, in the same folder look as its card: a tab, a tinted body, name, date and total. */
+function EventHeader({ ev, sub }) {
+  const [deep, light] = eventTones(ev);
+  return (
+    <div className="relative pt-3">
+      <span aria-hidden="true" className="absolute top-0 left-0 h-5 w-[38%] rounded-t-[8px]" style={{ background: `color-mix(in oklab, ${light} 75%, ${deep})` }} />
+      <div className="relative flex flex-col gap-1 rounded-[8px] rounded-tl-none p-4" style={{ background: `color-mix(in oklab, ${light} 55%, var(--card))` }}>
+        <span className="flex min-w-0 items-center gap-2">
+          <Folder className="size-5 flex-none" style={{ color: deep }} strokeWidth={2} />
+          <h2 className="truncate font-display text-2xl leading-tight font-bold">{ev.name}</h2>
+        </span>
+        <span className="text-[13px] text-foreground/70">{sub}</span>
+      </div>
+    </div>
+  );
+}
+
+/** An event on the Split overview, drawn as a folder. */
 function EventCard({ D, ev, onOpen }) {
   const bills = Object.values(D.bills).filter((b) => b.eventId === ev.id && b.kind === "bill");
   const total = bills.reduce((a, b) => a + b.amount, 0);
   const mine = balances(D, ev.id).me || 0, tiny = cur().dec ? 0.01 : 1;
+  const [deep, light] = eventTones(ev);
   return (
-    <button onClick={onOpen} className={cn(SOFT, "min-w-0 overflow-hidden text-left transition-transform active:scale-[0.98]")}
-      aria-label={t("Open {name}", { name: ev.name })} title={[ev.date && fmtDate(ev.date, true), t("{n} bills", { n: bills.length })].filter(Boolean).join(" · ")}>
-      {/* the photo is the card; name, total and my balance sit on a dark fade at the bottom */}
-      <EventCover event={ev} className="aspect-[2/1]">
-        <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
-        <span className="absolute inset-x-0 bottom-0 flex min-w-0 flex-col gap-1 p-2.5 text-white">
+    // a folder: a small tab on top, a tinted body holding the event
+    <button onClick={onOpen} className="group relative min-w-0 pt-2.5 text-left transition-transform active:scale-[0.98]" aria-label={t("Open {name}", { name: ev.name })}>
+      <span aria-hidden="true" className="absolute top-0 left-0 h-4 w-[42%] rounded-t-[8px]" style={{ background: `color-mix(in oklab, ${light} 75%, ${deep})` }} />
+      <span className="relative flex min-h-[86px] flex-col justify-between gap-2 rounded-[8px] rounded-tl-none p-3 shadow-[0_10px_24px_-18px_rgb(0_0_0/0.45)]" style={{ background: `color-mix(in oklab, ${light} 55%, var(--card))` }}>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Folder className="size-4 flex-none" style={{ color: deep }} strokeWidth={2} />
           <b className="truncate text-[15px] leading-tight font-semibold">{ev.name}</b>
-          <span className="flex min-w-0 items-center justify-between gap-1.5">
-            <Amt className="truncate text-xs text-white/90">{compact(total)}</Amt>
-            {Math.abs(mine) >= tiny && <span className={cn("truncate rounded-full bg-white/90 px-1.5 py-px text-[11px] font-medium", mine > 0 ? "text-[#25774A]" : "text-[#B3422A]")}>{t(mine > 0 ? "you get {amt}" : "you owe {amt}", { amt: compact(Math.abs(mine)) })}</span>}
-          </span>
         </span>
-      </EventCover>
+        <span className="flex min-w-0 items-center justify-between gap-1.5">
+          <Amt className="truncate text-[13px] text-foreground/75" title={money(total)}>{compact(total)}</Amt>
+          {Math.abs(mine) >= tiny && <span className={cn("flex-none rounded-full bg-card/80 px-1.5 py-px text-[11px] font-medium", mine > 0 ? "text-earn" : "text-spend")}>{t(mine > 0 ? "you get {amt}" : "you owe {amt}", { amt: compact(Math.abs(mine)) })}</span>}
+        </span>
+      </span>
     </button>
   );
 }
@@ -454,13 +533,7 @@ export function SplitView({ D }) {
           <Button variant="ghost" className="-ml-2 gap-1 px-2" onClick={() => go("all")}><ChevronLeft />{t("All events")}</Button>
           {!D.demo && <Button variant="ghost" size="sm" onClick={() => open(EventSheet, { id: ev.id })}><Pencil />{t("Edit event")}</Button>}
         </div>
-        <EventCover event={ev} className={cn(SOFT, "aspect-[2/1]")}>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 p-4 text-white">
-            <h2 className="font-display text-2xl leading-tight font-bold">{ev.name}</h2>
-            <span className="text-[13px] text-white/85">{[ev.date && fmtDate(ev.date, true), t("{amt} total", { amt: money(total) })].filter(Boolean).join(" · ")}</span>
-          </div>
-        </EventCover>
+        <EventHeader ev={ev} sub={[ev.date && fmtDate(ev.date, true), t("{amt} total", { amt: money(total) })].filter(Boolean).join(" · ")} />
         <BalanceSummary D={D} scope={ev.id} title={t("In this event")} onOpen={() => open(BalanceSheet, { scope: ev.id, title: ev.name })} />
         <div className="flex">{addBill}</div>
         {bills.length > 0 && <h3 className="mt-1 text-[13px] text-muted-foreground">{t("{n} bills", { n: bills.filter((b) => b.kind === "bill").length })}</h3>}
@@ -486,7 +559,7 @@ export function SplitView({ D }) {
       {evs.length
         ? <div className="grid grid-cols-2 gap-2.5">{evs.map((e) => <EventCard key={e.id} D={D} ev={e} onOpen={() => go(e.id)} />)}</div>
         : <button onClick={() => open(EventSheet, {})} className="flex items-center gap-3 rounded-[8px] border-[1.5px] border-dashed border-foreground/15 p-4 text-left text-sm text-muted-foreground hover:bg-muted/50">
-            <ImagePlus className="size-6 flex-none" strokeWidth={1.5} />{t("Make an event for a trip, a party or a shared house")}
+            <FolderPlus className="size-6 flex-none" strokeWidth={1.5} />{t("Make an event for a trip, a party or a shared house")}
           </button>}
       {loose.length > 0 && <>
         <h3 className="mt-2 text-[13px] text-muted-foreground">{t("Bills without an event")}</h3>
