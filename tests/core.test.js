@@ -47,6 +47,17 @@ test("recognises drinks, fruit and beauty services", () => {
   assert.equal(guessCat("karaoke", false), "Entertainment");
 });
 
+test("a trip to a destination is Travel, unless something more specific matches", () => {
+  const cases = {
+    "Đi chơi đà lạt": "Travel", "di choi da lat": "Travel", "vũng tàu cuối tuần": "Travel",
+    "đi chơi": "Entertainment", "lẩu đà lạt": "Food & Drinks", "vé xe đi đà lạt": "Transport",
+    "đi chơi sầm sơn": "Travel", "hạ long 3 ngày": "Travel", "cà mau": "Travel", "lao cai": "Travel",
+    "phở hà nội": "Food & Drinks", "bún bò huế": "Food & Drinks", "taxi sài gòn": "Transport", "tàu điện": "Transport",
+  };
+  for (const [s, c] of Object.entries(cases)) assert.equal(guessCat(s, false), c, s);
+  assert.equal(localParse("Đi chơi đà lạt 2tr").items[0].category, "Travel");
+});
+
 test("parses shared bills with fees, payer and event", () => {
   const [b] = localParse("Dinner 2tr với An và Bình svc 5% vat 8% ship 30k An paid #Dalat").items;
   assert.equal(b.type, "bill");

@@ -25,7 +25,8 @@ const TABS = [
 ];
 
 // keep toasts above the composer and tab bar
-const TOAST_OFFSET = { bottom: "calc(84px + env(safe-area-inset-bottom, 0px))" };
+// toasts sit at the top: the bottom holds the floating chat box, tab buttons and sheet actions, which they would cover
+const TOAST_OFFSET = { top: "calc(12px + env(safe-area-inset-top, 0px))" };
 
 function AccountMenu({ open }) {
   const acct = sync.mode === "account";
@@ -67,6 +68,7 @@ export default function App() {
   const sheets = useMemo(() => ({ open, close }), [open, close]);
 
   const [draft, setDraft] = useState(() => LS.get("pl-draft", ""));
+  const [composerH, setComposerH] = useState(0); // height of the floating chat box
   const inputRef = useRef(null);
   const mainRef = useRef(null);
 
@@ -82,7 +84,7 @@ export default function App() {
   // chat sticks to the newest message
   useLayoutEffect(() => { if (ui.tab === "chat" && chatLog.length && mainRef.current) mainRef.current.scrollTop = mainRef.current.scrollHeight; });
 
-  if (sync.mode === "none") return <><AuthScreen /><Toaster theme={prefs.theme} position="bottom-center" /></>;
+  if (sync.mode === "none") return <><AuthScreen /><Toaster theme={prefs.theme} position="top-center" /></>;
 
   setCurrency(settings().currency);
   const D = data();
@@ -103,18 +105,19 @@ export default function App() {
           <AccountMenu open={open} />
           <Button variant="ghost" size="icon" className="size-[38px] rounded-full bg-card shadow-[0_6px_16px_-10px_rgb(0_0_0/0.3)] dark:shadow-none" aria-label={t("Settings")} onClick={() => open(SettingsSheet, {})}><Settings className="size-[18px]" /></Button>
         </header>
-        <main ref={mainRef} className="flex flex-1 flex-col overflow-y-auto overscroll-contain pad-safe-x pt-1 pb-4">
+        <main ref={mainRef} className="flex flex-1 flex-col overflow-y-auto overscroll-contain pad-safe-x pt-1"
+          style={{ paddingBottom: `calc(${ui.tab === "chat" ? composerH + 84 : 84}px + env(safe-area-inset-bottom, 0px))` }}>
           <TabsContent value="chat" className="flex flex-col"><ChatView say={say} /></TabsContent>
           <TabsContent value="ledger"><LedgerView D={D} /></TabsContent>
           <TabsContent value="split"><SplitView D={D} /></TabsContent>
         </main>
-        {ui.tab === "chat" && <Composer inputRef={inputRef} text={draft} setText={setDraft} />}
-        {/* "dynamic island": a floating capsule of round buttons; the active one turns dark and widens to show its name */}
-        <div className="flex justify-center px-4 pt-1 pb-[calc(10px+env(safe-area-inset-bottom,0px))]">
-          <TabsList className="h-auto! gap-1.5 rounded-full bg-card/75 p-1.5 shadow-[0_12px_32px_-12px_rgb(0_0_0/0.35)] ring-1 ring-foreground/[0.06] backdrop-blur-xl">
+        {ui.tab === "chat" && <Composer inputRef={inputRef} text={draft} setText={setDraft} onHeight={setComposerH} />}
+        {/* "dynamic island": round buttons floating over the page (no bar behind them); the active one turns dark and widens to show its name */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-4 pb-[calc(12px+env(safe-area-inset-bottom,0px))]">
+          <TabsList className="pointer-events-auto h-auto! gap-2 bg-transparent p-0">
             {TABS.map(([v, l, I]) => (
               <TabsTrigger key={v} value={v} onClick={v === "chat" ? logNow : undefined} aria-label={t(l)}
-                className="group/tab h-12 min-w-12 flex-none gap-0 rounded-full border-0 bg-background/70 px-3.5 focus-visible:border-0 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none text-[15px] font-semibold text-foreground shadow-none! transition-[background-color,color,padding] duration-300 ease-out hover:text-foreground motion-reduce:transition-none data-[state=active]:bg-foreground data-[state=active]:px-5 data-[state=active]:text-background dark:bg-background/50 dark:text-foreground dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-foreground dark:data-[state=active]:text-background [&_svg]:size-5!">
+                className="group/tab h-12 min-w-12 flex-none gap-0 rounded-full border-0 bg-card/90 px-3.5 shadow-[0_8px_24px_-8px_rgb(0_0_0/0.35)]! ring-1 ring-foreground/[0.06] backdrop-blur-xl focus-visible:border-0 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-card focus-visible:outline-none text-[15px] font-semibold text-foreground transition-[background-color,color,padding] duration-300 ease-out hover:text-foreground motion-reduce:transition-none data-[state=active]:bg-foreground data-[state=active]:px-5 data-[state=active]:text-background dark:bg-background/50 dark:text-foreground dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-foreground dark:data-[state=active]:text-background [&_svg]:size-5!">
                 <I strokeWidth={v === "chat" ? 2.6 : 1.7} />
                 <span aria-hidden="true" className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-[max-width,opacity,margin] duration-300 ease-out motion-reduce:transition-none group-data-[state=active]/tab:ml-2 group-data-[state=active]/tab:max-w-32 group-data-[state=active]/tab:opacity-100">{t(l)}</span>
               </TabsTrigger>
@@ -123,7 +126,7 @@ export default function App() {
         </div>
       </Tabs>
       {sheet && <sheet.C key={sheet.key} {...sheet.props} open={sheetOpen} onOpenChange={(o) => !o && close()} />}
-      <Toaster theme={prefs.theme} position="bottom-center" offset={TOAST_OFFSET} mobileOffset={TOAST_OFFSET} />
+      <Toaster theme={prefs.theme} position="top-center" offset={TOAST_OFFSET} mobileOffset={TOAST_OFFSET} />
     </SheetCtx.Provider>
   );
 }

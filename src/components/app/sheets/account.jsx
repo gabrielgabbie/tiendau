@@ -102,7 +102,7 @@ export function SettingsSheet(sheet) {
         </Field>
         <Field label={t("Currency")} htmlFor="sCur" hint={t("Changing currency only changes how amounts are shown. It doesn't convert existing records.")}>
           <Select value={s.currency} onValueChange={(v) => put("meta", Object.assign(settings(), { currency: v }))}>
-            <SelectTrigger id="sCur" className="h-10 w-full"><SelectValue /></SelectTrigger>
+            <SelectTrigger id="sCur" className="data-[size=default]:h-10 w-full"><SelectValue /></SelectTrigger>
             <SelectContent>{Object.keys(CURRENCIES).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
           </Select>
         </Field>

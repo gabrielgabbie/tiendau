@@ -15,6 +15,8 @@ const EN = {
   "Added {n} records.": plural("Added 1 record.", "Added {n} records."),
   "{n} people": plural("1 person", "{n} people"),
   "{n} bills": plural("1 bill", "{n} bills"),
+  "Added {n} records from {shop}, {amt} in total.": plural("Added 1 record from {shop}, {amt} in total.", "Added {n} records from {shop}, {amt} in total."),
+  "Added {n} records from the bill, {amt} in total.": plural("Added 1 record from the bill, {amt} in total.", "Added {n} records from the bill, {amt} in total."),
   "{n} changes": plural("1 change", "{n} changes"),
   "{n} changes haven't synced. Tap again to sign out anyway": plural("1 change hasn't synced. Tap again to sign out anyway", "{n} changes haven't synced. Tap again to sign out anyway"),
   "{n} changes haven't synced. Tap again to sign out": plural("1 change hasn't synced. Tap again to sign out", "{n} changes haven't synced. Tap again to sign out"),

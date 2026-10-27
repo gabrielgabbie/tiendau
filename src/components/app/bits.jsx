@@ -3,9 +3,12 @@ import { createContext, useContext, useState } from "react";
 import { toast } from "sonner";
 import {
   UtensilsCrossed, Car, ShoppingBag, Receipt, House, HeartPulse, Ticket, Luggage, BookOpen, Gift, Tag,
-  Banknote, Laptop, Star, TrendingUp, Undo2, CirclePlus, ArrowLeftRight, ArrowDown, ArrowUp, LayoutGrid, Scissors,
+  Banknote, Laptop, Star, TrendingUp, Undo2, CirclePlus, ArrowLeftRight, ArrowDown, ArrowUp, LayoutGrid, Scissors, CalendarDays,
 } from "lucide-react";
-import { t } from "@/core/index.js";
+import { t, fmtDate, ymd, getLang } from "@/core/index.js";
+import { vi, enGB } from "react-day-picker/locale";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -139,19 +142,33 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, variant = "outli
   );
 }
 
-/** Hand-picked cover gradients for events without a photo (light and deep tone of one hue). */
+/** Hand-picked event colours (deep and light tone of one hue) for the folder look. */
 const COVERS = [["#2F8F74", "#8ED9C2"], ["#D07A3A", "#F4C995"], ["#5B7FC7", "#AFC8F6"], ["#B8566F", "#F2AFC0"], ["#7A5FB0", "#C8B6EC"], ["#3E9AB0", "#9EDCEA"], ["#8C7A2E", "#E2D38E"]];
 
-/** An event's cover: its photo, or a soft gradient picked from the event's id. */
-export function EventCover({ event, className, children }) {
+/** The two tones of an event's colour, picked from its id so it stays the same everywhere. */
+export function eventTones(event) {
   const h = [...String(event.id || event.name || "")].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
-  const [deep, light] = COVERS[h % COVERS.length];
+  return COVERS[h % COVERS.length];
+}
+
+
+/** shadcn-style date picker: a button showing the date that opens a calendar. `value` is "YYYY-MM-DD". */
+export function DateField({ id, value, onChange, className }) {
+  const [open, setOpen] = useState(false);
+  const date = value ? new Date(value + "T00:00") : undefined;
   return (
-    <div className={cn("relative isolate overflow-hidden bg-muted", className)}>
-      {event.photo
-        ? <img src={event.photo} alt="" className="absolute inset-0 -z-10 size-full object-cover" />
-        : <div aria-hidden="true" className="absolute inset-0 -z-10" style={{ background: `radial-gradient(90% 80% at 85% 10%, ${light}, transparent 65%), radial-gradient(80% 90% at 10% 100%, color-mix(in oklab, ${deep} 80%, black), transparent 70%), linear-gradient(150deg, ${light}, ${deep})` }} />}
-      {children}
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        {/* styled exactly like a select field, with a calendar icon where the chevron would be */}
+        <button id={id} type="button" className={cn("flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-card px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=open]:border-ring", !value && "text-muted-foreground", className)}>
+          <span className="truncate">{value ? fmtDate(value, true) : t("Pick a date")}</span>
+          <CalendarDays className="size-4 flex-none text-muted-foreground opacity-70" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar mode="single" selected={date} defaultMonth={date} weekStartsOn={1} locale={getLang() === "vi" ? vi : enGB}
+          onSelect={(d) => { if (d) { onChange(ymd(d)); setOpen(false); } }} />
+      </PopoverContent>
+    </Popover>
   );
 }

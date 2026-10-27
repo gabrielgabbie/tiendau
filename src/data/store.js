@@ -48,12 +48,8 @@ function toRow(col, o, uid) {
       const { id, kind, title, date, category, eventId, amount, createdAt, ...rest } = o;
       return { id, user_id: uid, kind, title: title || "", date, category: category || null, event_id: eventId || null, amount, data: rest, created_at: iso(createdAt) };
     }
-    case "events": {
-      const row = { id: o.id, user_id: uid, name: o.name, date: o.date || null };
-      // only send `photo` once an event has had one, so databases without the column keep working
-      if ("photo" in o) row.photo = o.photo || null;
-      return row;
-    }
+    case "events":
+      return { id: o.id, user_id: uid, name: o.name, date: o.date || null };
     case "people":
       return { id: o.id, user_id: uid, name: o.name };
     case "meta":
@@ -68,7 +64,7 @@ function fromRow(col, r) {
     case "bills":
       return migrateCategory({ ...(r.data || {}), id: r.id, kind: r.kind, title: r.title, date: r.date, category: r.category || undefined, eventId: r.event_id || null, amount: Number(r.amount), createdAt: msOf(r.created_at) });
     case "events":
-      return { id: r.id, name: r.name, date: r.date, ...(r.photo ? { photo: r.photo } : {}) };
+      return { id: r.id, name: r.name, date: r.date };
     case "people":
       return { id: r.id, name: r.name };
     case "meta":
