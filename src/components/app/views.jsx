@@ -1,19 +1,20 @@
 // The three screens: Log (quick add by chat), Ledger, Split.
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowUp, Mic, Square, Loader2, ImagePlus, Plus, Folder, FolderPlus, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ListFilter, Pencil, X } from "lucide-react";
+import { ArrowUp, Mic, Square, Loader2, ImagePlus, Plus, Folder, FolderPlus, Check, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ListFilter, Pencil, X } from "lucide-react";
 import { money, compact, fmtDate, cur, balances, settlePlan, today, t, getLang } from "@/core/index.js";
 import { readBill, billThumb } from "@/lib/bill-reader.js";
-import { useSpeech } from "@/lib/use-speech.js";
+import { useSpeech, micPermission } from "@/lib/use-speech.js";
+import { MicSheet } from "@/components/app/sheets/mic.jsx";
 import { S, put, del, LS } from "@/data/store.js";
-import { ui, chatLog, data, send, startBill, billProgress, finishBill, failBill, pname, billMeta, uid, bump, saveL, settings, saveSettle, deleteBill, SORTS, periodRange, periodLabel, stepPeriod, filterLabel, filterOn, clearFilter } from "@/lib/model.js";
+import { ui, chatLog, data, send, billDebts, payBillDebt, startBill, billProgress, finishBill, failBill, pname, billMeta, uid, bump, saveL, settings, saveSettle, deleteBill, SORTS, periodRange, periodLabel, stepPeriod, filterLabel, filterOn, clearFilter } from "@/lib/model.js";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CatBadge, CatIcon, catColor, Chip, Amt, eventTones, AppSheet, useSheets } from "@/components/app/bits.jsx";
+import { CatBadge, CatIcon, catColor, Chip, Amt, eventTones, AppSheet, SheetActions, Section, useSheets } from "@/components/app/bits.jsx";
 import { TxSheet, EventSheet } from "@/components/app/sheets/records.jsx";
 import { BillSheet } from "@/components/app/sheets/bill.jsx";
 import { DatePickerSheet, FilterSheet } from "@/components/app/sheets/pickers.jsx";
@@ -128,8 +129,6 @@ export function ChatView({ say }) {
 }
 
 const SPEECH_ERRORS = {
-  "not-allowed": "Microphone access is blocked. Allow it in your browser settings.",
-  "service-not-allowed": "Microphone access is blocked. Allow it in your browser settings.",
   "audio-capture": "No microphone found.",
   "no-speech": "Didn't catch that. Tap the mic and try again.",
   network: "Voice input needs an internet connection.",
@@ -137,6 +136,7 @@ const SPEECH_ERRORS = {
 
 /** The main action: a large box to type or speak records, with a receipt scanner, mic and send. */
 export function Composer({ inputRef, text, setText, onHeight }) {
+  const { open } = useSheets();
   const base = useRef("");
   const root = useRef(null);
   const file = useRef(null);
@@ -152,7 +152,11 @@ export function Composer({ inputRef, text, setText, onHeight }) {
   const speech = useSpeech({
     lang: getLang() === "vi" ? "vi-VN" : "en-US",
     onText: (heard) => update(base.current ? `${base.current}, ${heard}` : heard),
-    onError: (code) => toast(t(SPEECH_ERRORS[code] || "Voice input stopped. Try again.")),
+    onError: (code) => {
+      // blocked after all (e.g. Safari, which can't report the permission ahead of time)
+      if (code === "not-allowed" || code === "service-not-allowed") open(MicSheet, { state: "denied", onReady: listen });
+      else toast(t(SPEECH_ERRORS[code] || "Voice input stopped. Try again."));
+    },
   });
   const grow = () => { const el = inputRef.current; if (!el) return; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 132) + "px"; };
   useEffect(grow, [text]);
@@ -184,11 +188,14 @@ export function Composer({ inputRef, text, setText, onHeight }) {
     send(text);
     update("");
   };
-  const mic = () => {
-    if (!speech.supported) { toast(t("Voice input isn't supported in this browser. Try Chrome or Safari.")); return; }
+  const listen = () => { base.current = text.trim().replace(/,$/, ""); speech.start(); };
+  const mic = async () => {
     if (speech.listening) { speech.stop(); return; }
-    base.current = text.trim().replace(/,$/, "");
-    speech.start();
+    const state = await micPermission();
+    // no voice recognition here: say why (http page, home-screen app, other browser) and offer the keyboard's mic
+    if (!speech.supported) { open(MicSheet, { state: state === "insecure" ? "insecure" : "unsupported", onKeyboard: () => setTimeout(() => inputRef.current?.focus(), 350) }); return; }
+    if (state === "granted") listen();
+    else open(MicSheet, { state, onReady: listen, onKeyboard: () => setTimeout(() => inputRef.current?.focus(), 350) }); // explain first, then the browser's own dialog
   };
   return (
     // floats above the bottom buttons with nothing behind it; the chat scrolls underneath
@@ -455,8 +462,9 @@ function EventCard({ D, ev, onOpen }) {
 /** One bill with its breakdown: who paid and each person's share. */
 function BillCard({ D, b, onOpen }) {
   const shares = Object.entries(b.shares || {}).sort((x, y) => (x[0] === "me" ? -1 : y[0] === "me" ? 1 : y[1] - x[1]));
+  const debts = billDebts(D, b);
   return (
-    <button onClick={onOpen} className={cn(SOFT, "flex w-full flex-col gap-2.5 p-3.5 text-left")} aria-label={t("Edit {name}", { name: b.title })}>
+    <button onClick={onOpen} className={cn(SOFT, "flex w-full flex-col gap-2.5 p-3.5 text-left")} aria-label={t("See {name}", { name: b.title })}>
       <span className="flex items-center gap-3">
         <CatBadge cat={b.category || "Other"} soft />
         <span className="min-w-0 flex-1">
@@ -466,14 +474,84 @@ function BillCard({ D, b, onOpen }) {
         <Amt>{money(b.amount)}</Amt>
       </span>
       <span className="flex flex-wrap gap-1.5">
-        {shares.map(([p, v]) => (
-          <span key={p} className={cn("inline-flex items-baseline gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs", p === "me" && "bg-accent text-accent-foreground")}>
-            <span>{pname(p, D)}</span><Amt className="text-[11px]">{compact(v)}</Amt>
-            {b.paid?.[p] ? <span className="text-[10px] text-muted-foreground">· {t("paid")}</span> : null}
-          </span>
-        ))}
+        {shares.map(([p, v]) => {
+          const owes = debts.filter((d) => d.from === p);
+          const done = owes.length > 0 && owes.every((d) => d.paid >= d.amount);
+          return (
+            <span key={p} className={cn("inline-flex items-baseline gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs", p === "me" && "bg-accent text-accent-foreground", done && "bg-earn/12 text-earn")}>
+              <span>{pname(p, D)}</span><Amt className="text-[11px]">{compact(v)}</Amt>
+              {done && <Check className="size-3 self-center" strokeWidth={3} aria-label={t("paid back")} />}
+            </span>
+          );
+        })}
       </span>
     </button>
+  );
+}
+
+/** One shared bill: who paid, each person's share, who owes whom and whether they've paid it back. */
+function BillDetailSheet({ id, ...sheet }) {
+  const { open, close } = useSheets();
+  const guard = useDemoGuard();
+  const D = data(), b = D.bills[id];
+  if (!b) return null;
+  const debts = billDebts(D, b);
+  const payers = Object.entries(b.paid || { [b.paidBy]: b.amount }).filter(([, v]) => v > 0);
+  const shares = Object.entries(b.shares || {}).sort((x, y) => (x[0] === "me" ? -1 : y[0] === "me" ? 1 : y[1] - x[1]));
+  const ev = b.eventId && D.events[b.eventId];
+  const pay = (d) => {
+    if (guard()) return;
+    const left = d.amount - d.paid;
+    payBillDebt(b, d);
+    toast(d.to === "me" ? t("Added {amt} to your income", { amt: money(left) }) : d.from === "me" ? t("Added {amt} to your spending", { amt: money(left) }) : t("Marked as paid"));
+  };
+  const edit = () => { if (guard()) return; close(); setTimeout(() => open(BillSheet, { id })); };
+  const sentence = (d) => d.from === "me" ? t("You owe {name}", { name: pname(d.to, D) }) : d.to === "me" ? t("{name} owes you", { name: pname(d.from, D) }) : t("{from} owes {to}", { from: pname(d.from, D), to: pname(d.to, D) });
+  return (
+    <AppSheet {...sheet} title={b.title}>
+      <div className="flex items-end justify-between gap-3">
+        <span className="text-[13px] text-muted-foreground">{[fmtDate(b.date, true), t(b.category || "Other"), ev && ev.name].filter(Boolean).join(" · ")}</span>
+        <Amt className="text-2xl font-semibold">{money(b.amount)}</Amt>
+      </div>
+      <p className="text-sm">{t("Paid by {names}", { names: payers.map(([p, v]) => payers.length > 1 ? `${pname(p, D)} (${compact(v)})` : pname(p, D)).join(", ") })}</p>
+
+      <Section title={t("Who owes")}>
+        {debts.length === 0 && <p className="text-sm text-muted-foreground">{t("Nobody owes anything on this bill.")}</p>}
+        <div className="flex flex-col gap-2">
+          {debts.map((d) => {
+            const done = d.paid >= d.amount;
+            return (
+              <div key={d.from + d.to} className={cn(SOFT, "flex items-center gap-3 p-3")}>
+                <Avatar className="size-9"><AvatarFallback className="text-sm font-semibold">{pname(d.from === "me" ? d.to : d.from, D)[0]}</AvatarFallback></Avatar>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{sentence(d)}</span>
+                  <Amt className={cn("block text-base font-semibold", done ? "text-muted-foreground line-through" : d.to === "me" ? "text-earn" : "text-spend")}>{money(d.amount)}</Amt>
+                  {!done && d.paid > 0 && <span className="block text-xs text-muted-foreground">{t("{amt} paid, {left} left", { amt: compact(d.paid), left: compact(d.amount - d.paid) })}</span>}
+                </span>
+                {done
+                  ? <span className="inline-flex items-center gap-1 rounded-full bg-earn/12 px-2.5 py-1 text-xs font-semibold text-earn"><Check className="size-3.5" strokeWidth={3} />{t("Paid back")}</span>
+                  : <Button size="sm" variant={d.to === "me" ? "default" : "outline"} onClick={() => pay(d)}>{t(d.from === "me" ? "I paid" : "Mark paid")}</Button>}
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      <Section title={t("Shares")}>
+        <List className={SOFT}>
+          {shares.map(([p, v]) => (
+            <div key={p} className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm">
+              <span>{pname(p, D)}</span><Amt>{money(v)}</Amt>
+            </div>
+          ))}
+        </List>
+      </Section>
+
+      <SheetActions>
+        <Button variant="outline" onClick={close}>{t("Close")}</Button>
+        <Button variant="secondary" onClick={edit}><Pencil />{t("Edit")}</Button>
+      </SheetActions>
+    </AppSheet>
   );
 }
 
@@ -519,6 +597,7 @@ export function SplitView({ D }) {
   if (ui.event !== "all" && !D.events[ui.event]) ui.event = "all";
   const go = (e) => { ui.event = e; document.querySelector("main")?.scrollTo({ top: 0 }); bump(); };
   const editBill = (b) => { if (guard()) return; open(BillSheet, { id: b.id }); };
+  const viewBill = (b) => open(BillDetailSheet, { id: b.id });
   const allBills = Object.values(D.bills);
   const addBill = <Button className="h-11 flex-1" onClick={() => open(BillSheet, {})}><Plus />{t("Add shared bill")}</Button>;
 
@@ -538,7 +617,7 @@ export function SplitView({ D }) {
         <div className="flex">{addBill}</div>
         {bills.length > 0 && <h3 className="mt-1 text-[13px] text-muted-foreground">{t("{n} bills", { n: bills.filter((b) => b.kind === "bill").length })}</h3>}
         {bills.length
-          ? <div className="flex flex-col gap-2">{bills.map((b) => b.kind === "settle" ? <List key={b.id} className={SOFT}>{settleRow(b, D, () => editBill(b))}</List> : <BillCard key={b.id} D={D} b={b} onOpen={() => editBill(b)} />)}</div>
+          ? <div className="flex flex-col gap-2">{bills.map((b) => b.kind === "settle" ? <List key={b.id} className={SOFT}>{settleRow(b, D, () => editBill(b))}</List> : <BillCard key={b.id} D={D} b={b} onOpen={() => viewBill(b)} />)}</div>
           : <Empty>{t("No bills in this event yet. Add one, or type “dinner 1.2tr with An #{tag}” in Log.", { tag: ev.name.replace(/\s+/g, "") })}</Empty>}
       </div>
     );
@@ -563,8 +642,7 @@ export function SplitView({ D }) {
           </button>}
       {loose.length > 0 && <>
         <h3 className="mt-2 text-[13px] text-muted-foreground">{t("Bills without an event")}</h3>
-        <List className={SOFT}>{loose.map((b) => b.kind === "settle" ? settleRow(b, D, () => editBill(b))
-          : <Row key={b.id} badge={<CatBadge cat={b.category || "Other"} soft />} title={b.title} sub={`${billMeta(b, D)} · ${fmtDate(b.date)}`} amount={money(b.amount)} label={t("Edit {name}", { name: b.title })} onClick={() => editBill(b)} soft />)}</List>
+        <div className="flex flex-col gap-2">{loose.map((b) => b.kind === "settle" ? <List key={b.id} className={SOFT}>{settleRow(b, D, () => editBill(b))}</List> : <BillCard key={b.id} D={D} b={b} onOpen={() => viewBill(b)} />)}</div>
       </>}
     </div>
   );

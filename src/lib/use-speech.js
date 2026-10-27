@@ -35,3 +35,36 @@ export function useSpeech({ lang, onText, onError }) {
 
   return { listening, start, stop, supported: speechSupported };
 }
+
+/** "granted" | "denied" | "prompt" | "insecure". "insecure": http pages never get the microphone. */
+export async function micPermission() {
+  if (typeof window !== "undefined" && !window.isSecureContext) return "insecure";
+  try {
+    const s = await navigator.permissions.query({ name: "microphone" });
+    return s.state;
+  } catch {
+    return "prompt"; // Safari before 16 can't tell; asking is how we find out
+  }
+}
+
+/** Shows the browser's own "allow microphone?" dialog. Resolves true when allowed. */
+export async function askForMic() {
+  if (!navigator.mediaDevices?.getUserMedia) return false;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((tr) => tr.stop()); // only needed the permission
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Which set of "turn it back on" steps fits this device. */
+export function micDevice() {
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const standalone = window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone;
+  if (ios) return standalone ? "ios-app" : "ios-safari";
+  if (/Android/.test(ua)) return "android";
+  return "desktop";
+}

@@ -14,10 +14,10 @@ export function parseAmountToken(numStr,suf){
 }
 const pct=n=>parseFloat(String(n).replace(",","."));
 const ADJ_RES=[
-  [/\b(?:ship(?:ping)?(?:\s+fee)?|delivery(?:\s+fee)?|phí ship|phí giao hàng)\s*:?\s*(\d+(?:[.,]\d+)*)\s*(k|tr|nghìn|ngàn)?(?![\p{L}%])/giu,g=>({label:"Shipping",type:"fee",value:parseAmountToken(g[1],g[2]),unit:"amount",alloc:"equal"})],
+  [/\b(?:ship(?:ping)?(?:\s+fee)?|delivery(?:\s+fee)?|phí ship|phí giao hàng)\s*:?\s*(\d+(?:[.,]\d+)*)\s*(k|tr|nghìn|ngàn)?(?![\p{L}%])/giu,g=>({label:"Shipping",type:"fee",value:parseAmountToken(g[1],g[2]),unit:"amount",alloc:"proportional"})],
   [/\b(?:service(?:\s+charge)?|svc|phí dịch vụ)\s*:?\s*(\d+(?:[.,]\d+)?)\s*%/giu,g=>({label:"Service charge",type:"fee",value:pct(g[1]),unit:"percent",alloc:"proportional"})],
   [/\b(?:vat|tax|thuế)\s*:?\s*(\d+(?:[.,]\d+)?)\s*%/giu,g=>({label:"VAT",type:"fee",value:pct(g[1]),unit:"percent",alloc:"proportional"})],
-  [/\b(?:tip|boa)\s*:?\s*(\d+(?:[.,]\d+)*)\s*(k|tr|nghìn|ngàn)?(?![\p{L}%])/giu,g=>({label:"Tip",type:"fee",value:parseAmountToken(g[1],g[2]),unit:"amount",alloc:"equal"})],
+  [/\b(?:tip|boa)\s*:?\s*(\d+(?:[.,]\d+)*)\s*(k|tr|nghìn|ngàn)?(?![\p{L}%])/giu,g=>({label:"Tip",type:"fee",value:parseAmountToken(g[1],g[2]),unit:"amount",alloc:"proportional"})],
   [/\b(?:discount|promo(?:\s+code)?|voucher|coupon|giảm(?:\s+giá)?|khuyến mãi|km)\s*:?\s*-?\s*(\d+(?:[.,]\d+)*)\s*(%|k|tr|nghìn|ngàn)?(?!\p{L})/giu,g=>g[2]==="%"?{label:"Discount",type:"discount",value:pct(g[1]),unit:"percent",alloc:"proportional"}:{label:"Discount",type:"discount",value:parseAmountToken(g[1],g[2]),unit:"amount",alloc:"proportional"}],
 ];
 const AMT_RE=/(\$|€)?\s*(\d+(?:[.,]\d+)*)\s*(k|tr|triệu|nghìn|ngàn|củ|thousand|million|mil|m|b|tỷ)?\b\s*(đồng|dong|đ|vnd|usd|dollars?|\$|€)?/i;
