@@ -1,21 +1,17 @@
 // App shell: sign-in or the one-screen app (header, current screen, bottom tabs), plus the open sheet.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { HandCoins, LogIn, LogOut, Plus, ReceiptText, Settings, User, UserCog } from "lucide-react";
+import { HandCoins, Plus, ReceiptText } from "lucide-react";
+import { toast } from "sonner";
 import { setCurrency, t } from "@/core/index.js";
-import { sync, on, LS, showSignIn, signOut, unsyncedCount } from "@/data/store.js";
-import { ui, data, settings, subscribe, getVersion, bump, chatLog, who, prefs } from "@/lib/model.js";
+import { sync, on, LS, showSignIn } from "@/data/store.js";
+import { ui, data, settings, subscribe, getVersion, bump, chatLog, prefs } from "@/lib/model.js";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { SheetCtx } from "@/components/app/bits.jsx";
 import { AuthScreen } from "@/components/app/AuthScreen.jsx";
 import { ChatView, Composer, LedgerView, SplitView } from "@/components/app/views.jsx";
-import { AccountSheet, SettingsSheet, NewPasswordSheet, GuestDataSheet, Identity } from "@/components/app/sheets/account.jsx";
+import { AccountSettingsSheet, NewPasswordSheet, GuestDataSheet, MeAvatar } from "@/components/app/sheets/account.jsx";
 
 // bottom bar order: Ledger · Log (the main action) · Split
 const TABS = [
@@ -24,38 +20,22 @@ const TABS = [
   ["split", "Split", HandCoins, "Shared bills"],
 ];
 
-// keep toasts above the composer and tab bar
 // toasts sit at the top: the bottom holds the floating chat box, tab buttons and sheet actions, which they would cover
 const TOAST_OFFSET = { top: "calc(12px + env(safe-area-inset-top, 0px))" };
 
-function AccountMenu({ open }) {
+/** The one header button: your picture (or initials), opening account & settings. A dot shows sync trouble. */
+function MeButton({ open }) {
   const acct = sync.mode === "account";
-  const [sure, setSure] = useState(false);
-  const n = unsyncedCount();
   const dot = acct && { syncing: "bg-primary", offline: "bg-warn", error: "bg-spend" }[sync.status];
   const hint = !acct ? "" : sync.status === "offline" ? t("Offline, changes waiting") : sync.status === "error" ? t("A change couldn't be saved") : "";
   return (
-    <DropdownMenu modal={false} onOpenChange={(o) => !o && setSure(false)}>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" title={hint} className={cn("relative size-[38px] rounded-full bg-card shadow-[0_6px_16px_-10px_rgb(0_0_0/0.3)] dark:shadow-none", acct && "bg-accent text-accent-foreground")} aria-label={acct ? t("Account: {name}", { name: who().name || who().email }) : t("Account: not signed in")}>
-          {acct ? <span className="text-[15px] font-bold">{who().initial}</span> : <User className="size-[18px]" />}
-          {dot && <span className={cn("absolute top-0 right-0 size-[9px] rounded-full border-2 border-background", dot)} />}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[min(300px,calc(100vw-32px))] p-1.5">
-        <DropdownMenuLabel className="px-2 pt-2 pb-3 font-normal"><Identity big={false} signedOut={!acct} /></DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {acct ? <>
-          <DropdownMenuItem className="py-2.5 font-semibold" onSelect={() => open(AccountSheet, {})}><UserCog />{t("Manage account")}</DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" className="py-2.5 font-semibold" onSelect={async (e) => {
-            if (n && !sure) { e.preventDefault(); setSure(true); return; }
-            await signOut();
-          }}><LogOut />{sure ? t("{n} changes haven't synced. Tap again to sign out", { n }) : t("Sign out")}</DropdownMenuItem>
-        </> : sync.configured
-          ? <DropdownMenuItem className="py-2.5 font-semibold" onSelect={showSignIn}><LogIn />{t("Sign in or create an account")}</DropdownMenuItem>
-          : <p className="px-2.5 py-2 text-xs text-muted-foreground">{t("Accounts aren't set up for this copy of the app yet.")}</p>}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    // signed out, there's nothing to set: the button just leads to signing in
+    <button type="button" title={hint} onClick={() => acct ? open(AccountSettingsSheet, {}) : sync.configured ? showSignIn() : toast(t("Accounts aren't set up for this copy of the app yet."))}
+      aria-label={acct ? t("Account & settings") : t("Sign in or create an account")}
+      className="relative rounded-full shadow-[0_6px_16px_-10px_rgb(0_0_0/0.3)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none">
+      <MeAvatar className="size-[38px] ring-2 ring-card" fallbackClass="text-[15px]" />
+      {dot && <span className={cn("absolute top-0 right-0 size-[10px] rounded-full border-2 border-background", dot)} />}
+    </button>
   );
 }
 
@@ -102,8 +82,7 @@ export default function App() {
             Tiền Đâu
             <small className="mt-1 block font-sans text-[11px] leading-snug font-medium tracking-[.08em] text-muted-foreground uppercase">{t(TABS.find((x) => x[0] === ui.tab)?.[3])}</small>
           </h1>
-          <AccountMenu open={open} />
-          <Button variant="ghost" size="icon" className="size-[38px] rounded-full bg-card shadow-[0_6px_16px_-10px_rgb(0_0_0/0.3)] dark:shadow-none" aria-label={t("Settings")} onClick={() => open(SettingsSheet, {})}><Settings className="size-[18px]" /></Button>
+          <MeButton open={open} />
         </header>
         <main ref={mainRef} className="flex flex-1 flex-col overflow-y-auto overscroll-contain pad-safe-x pt-1"
           style={{ paddingBottom: `calc(${ui.tab === "chat" ? composerH + 84 : 84}px + env(safe-area-inset-bottom, 0px))` }}>

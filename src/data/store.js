@@ -52,8 +52,12 @@ function toRow(col, o, uid) {
       return { id: o.id, user_id: uid, name: o.name, date: o.date || null };
     case "people":
       return { id: o.id, user_id: uid, name: o.name };
-    case "meta":
-      return { user_id: uid, currency: o.currency || "VND", hide_demo: !!o.hideDemo };
+    case "meta": {
+      const row = { user_id: uid, currency: o.currency || "VND", hide_demo: !!o.hideDemo };
+      // only send `avatar` once a picture has been set, so databases without the column keep working
+      if ("avatar" in o) row.avatar = o.avatar || null;
+      return row;
+    }
   }
 }
 
@@ -68,7 +72,7 @@ function fromRow(col, r) {
     case "people":
       return { id: r.id, name: r.name };
     case "meta":
-      return { id: "settings", currency: r.currency, hideDemo: r.hide_demo };
+      return { id: "settings", currency: r.currency, hideDemo: r.hide_demo, ...(r.avatar ? { avatar: r.avatar } : {}) };
   }
 }
 const keyOf = (col, r) => (col === "meta" ? "settings" : r.id);
@@ -77,7 +81,15 @@ const keyOf = (col, r) => (col === "meta" ? "settings" : r.id);
 // The database uses UUIDs. Records from older versions or other sources may not, so they get new
 // ids here, with every reference between records updated to match.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const newId = () => crypto.randomUUID();
+/** A random UUID. crypto.randomUUID only exists on https pages, so build one from random bytes otherwise
+ *  (e.g. when testing on a phone over the local network). */
+export function newId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80; // version 4, RFC 4122 variant
+  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
 export function normalizeIds(d) {
   const map = {};
   const fix = (id) => (id == null || id === "me" ? id : UUID.test(id) ? id : (map[id] ||= newId()));
@@ -305,8 +317,9 @@ export async function init() {
   else setMode("none");
 }
 
-export const continueAsGuest = () => enterGuest();
-export const showSignIn = () => { unsubscribe(); resetData(); setMode("none"); };
+export const continueAsGuest = () => { sync.canGoBack = false; enterGuest(); };
+// opened from inside the app (not the first launch): the sign-in page then offers a way back
+export const showSignIn = () => { sync.canGoBack = true; unsubscribe(); resetData(); setMode("none"); };
 
 function leaveAccount() {
   const uid = sync.user?.id;

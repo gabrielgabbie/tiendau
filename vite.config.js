@@ -20,6 +20,8 @@ function localApi(env) {
 }
 
 export default defineConfig(({ mode }) => ({
+  // lets a temporary https tunnel (for testing on a phone) reach the dev server
+  server: { allowedHosts: [".trycloudflare.com"] },
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   plugins: [
     localApi(loadEnv(mode, process.cwd(), "")),
