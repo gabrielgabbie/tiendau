@@ -3,7 +3,7 @@ import { createContext, useContext, useState } from "react";
 import { toast } from "sonner";
 import {
   UtensilsCrossed, Car, ShoppingBag, Receipt, House, HeartPulse, Ticket, Luggage, BookOpen, Gift, Tag,
-  Banknote, Laptop, Star, TrendingUp, Undo2, CirclePlus, ArrowLeftRight, ArrowDown, ArrowUp, LayoutGrid, Scissors, CalendarDays,
+  Banknote, Laptop, Star, TrendingUp, Undo2, CirclePlus, ArrowLeftRight, ArrowDown, ArrowUp, LayoutGrid, Scissors, CalendarDays, ChevronLeft,
 } from "lucide-react";
 import { t, fmtDate, ymd, getLang } from "@/core/index.js";
 import { vi, enGB } from "react-day-picker/locale";
@@ -95,7 +95,8 @@ export const SheetCtx = createContext({ open() {}, close() {} });
 export const useSheets = () => useContext(SheetCtx);
 
 /** Bottom sheet frame: a shadcn Sheet sized for a phone column. */
-export function AppSheet({ open, onOpenChange, title, children, headerExtra }) {
+/** A bottom sheet. With onBack, a back arrow sits before the title (for pages inside the sheet). */
+export function AppSheet({ open, onOpenChange, title, children, headerExtra, onBack }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -105,7 +106,10 @@ export function AppSheet({ open, onOpenChange, title, children, headerExtra }) {
       >
         <div className="h-1 w-10 flex-none self-center rounded-full bg-border" aria-hidden="true" />
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <SheetTitle className="font-display text-xl leading-tight font-bold">{title}</SheetTitle>
+          <span className="flex min-w-0 items-center gap-1">
+            {onBack && <Button variant="ghost" size="icon-sm" className="-ml-1.5 size-9 rounded-full" aria-label={t("Back")} onClick={onBack}><ChevronLeft className="size-5" /></Button>}
+            <SheetTitle className="font-display text-xl leading-tight font-bold">{title}</SheetTitle>
+          </span>
           {headerExtra}
         </div>
         <SheetDescription className="sr-only">{title}</SheetDescription>

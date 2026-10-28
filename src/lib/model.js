@@ -4,9 +4,9 @@ import {
   EXP_CATS, INC_CATS, guessCat, round, pad, ymd, today, fmtLong, money,
   isNum, finalizeBill, localParse, t, setLang, locale, billRecords, balances, settlePlan, cur,
 } from "../core/index.js"; // relative paths so tests can load this module in Node
-import { S, LS, put, del, sync, on } from "../data/store.js";
+import { S, LS, put, del, sync, on, newId } from "../data/store.js";
 
-export const uid = () => crypto.randomUUID();
+export const uid = () => newId();
 
 // ---------- UI state that outlives a render (persisted where the old app persisted it) ----------
 // the app always opens on Log, the main action
@@ -284,7 +284,14 @@ export function clearFilter() { ui.L.type = "all"; ui.L.cats = []; saveL(); bump
 export function spentBy(keyLen) { const out = {}; Object.values(data().tx).forEach((t) => { if (t.type === "income" || !t.date) return; const k = t.date.slice(0, keyLen); out[k] = (out[k] || 0) + t.amount; }); return out; }
 
 // ---------- account ----------
-export function who() { const u = sync.user, m = u.user_metadata || {}; const name = m.full_name || m.name || ""; const email = u.email || ""; return { name, email, initial: (name || email || "?")[0].toUpperCase() }; }
+/** You: name, email, initial and picture (your own, else the one from Google). Works signed out too. */
+export function who() {
+  const u = sync.mode === "account" ? sync.user : null, m = u?.user_metadata || {};
+  const name = m.full_name || m.name || ""; const email = u?.email || "";
+  return { signedIn: !!u, name, email, initial: (name || email || "?")[0].toUpperCase(), avatar: settings().avatar || m.avatar_url || m.picture || null };
+}
+/** Sets (or with null, removes) your profile picture; it syncs with your settings. */
+export function saveAvatar(avatar) { put("meta", Object.assign(settings(), { avatar: avatar || null })); bump(); }
 export const providerLabel = (p) => ({ google: "Google", apple: "Apple" })[p] || t("email");
 export function syncText() {
   const n = sync.pending, ch = t("{n} changes", { n });

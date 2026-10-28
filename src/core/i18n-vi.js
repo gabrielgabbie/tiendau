@@ -1,5 +1,19 @@
 // Vietnamese text, keyed by the English text used in the code. Keep {placeholders} as they are.
 export const VI = {
+  "Account & settings": "Tài khoản & cài đặt",
+  "Change profile picture": "Đổi ảnh đại diện",
+  "Add profile picture": "Thêm ảnh đại diện",
+  "Profile picture updated": "Đã cập nhật ảnh đại diện",
+  "Remove picture": "Bỏ ảnh",
+  "Account": "Tài khoản",
+  "Data": "Dữ liệu",
+  "A backup saves all your records to a file. Restoring adds to what's here and updates records with the same id.": "Bản sao lưu lưu mọi khoản vào một tệp. Khôi phục sẽ thêm vào dữ liệu hiện có và cập nhật các khoản trùng mã.",
+  "Both are permanent. Export a backup first if you might want your records later.": "Cả hai đều không thể hoàn tác. Hãy xuất bản sao lưu trước nếu bạn có thể cần lại dữ liệu.",
+  "Name saved": "Đã lưu tên",
+  "Your name": "Tên của bạn",
+  "Other ways": "Cách khác",
+  "Email me a one-time code": "Gửi mã một lần qua email",
+  "That photo couldn't be read. Try another one.": "Không đọc được ảnh này. Hãy thử ảnh khác.",
   // tabs & header
   "Log": "Ghi",
   "Ledger": "Sổ",

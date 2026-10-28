@@ -1,7 +1,8 @@
-// Sign-in screen: Google, Apple, email (password or one-time code), or continue without an account.
+// Sign-in screen: email and password first; Google, Apple or a one-time code below; or continue without an account.
 import { useState } from "react";
+import { ChevronLeft, Mail } from "lucide-react";
 import { supabase, providers } from "@/data/supabase.js";
-import { continueAsGuest } from "@/data/store.js";
+import { continueAsGuest, sync } from "@/data/store.js";
 import { friendly } from "@/lib/auth-errors.js";
 import { t, LANGS } from "@/core/index.js";
 import { prefs, setLanguage } from "@/lib/model.js";
@@ -23,6 +24,14 @@ export function BrandMark({ className = "size-13" }) {
     </svg>
   );
 }
+
+// brand marks for the sign-in buttons (single-colour, follow the text colour)
+const GoogleMark = () => (
+  <svg viewBox="0 0 24 24" className="size-[18px]" aria-hidden="true"><path fill="#4285F4" d="M22.6 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2.1-1.9 3.3-4.8 3.3-8Z"/><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.6-2.8c-1 .7-2.2 1.1-3.7 1.1-2.9 0-5.3-1.9-6.2-4.5H2.1v2.8A11 11 0 0 0 12 23Z"/><path fill="#FBBC05" d="M5.8 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2.1a11 11 0 0 0 0 9.8l3.7-2.8Z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3.1.6 4.2 1.7l3.2-3.2A11 11 0 0 0 2.1 7.1l3.7 2.8C6.7 7.3 9.1 5.4 12 5.4Z"/></svg>
+);
+const AppleMark = () => (
+  <svg viewBox="0 0 24 24" className="size-[18px]" aria-hidden="true" fill="currentColor"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9a4.8 4.8 0 0 0-3.8-2c-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9a5 5 0 0 0-4.2 2.6c-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.3-.1 1.7-.8 3.3-.8 1.5 0 2 .8 3.3.8 1.4 0 2.2-1.3 3-2.5a10 10 0 0 0 1.4-2.8 4.4 4.4 0 0 1-2.3-4.2ZM13.9 5c.7-.8 1.2-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4Z"/></svg>
+);
 
 const LinkBtn = ({ className, ...p }) => <Button type="button" variant="link" className={cn("h-auto px-0 py-1 font-semibold", className)} {...p} />;
 
@@ -136,6 +145,7 @@ export function AuthScreen() {
     <div className="flex h-full justify-center overflow-y-auto pad-safe-x pt-[calc(28px+env(safe-area-inset-top,0px))] pb-[calc(24px+env(safe-area-inset-bottom,0px))]">
       <div className="flex w-full max-w-[400px] flex-col gap-3.5">
         <div className="mb-2 flex flex-col gap-1.5">
+          {sync.canGoBack && <LinkBtn className="-mt-2 mb-1 self-start" onClick={continueAsGuest}><ChevronLeft className="size-4" />{t("Back")}</LinkBtn>}
           <div className="flex items-start justify-between gap-3">
             <BrandMark />
             <Segmented size="sm" className="w-44" label={t("Language")} value={prefs.lang} onChange={setLanguage} options={Object.entries(LANGS)} />
@@ -145,16 +155,17 @@ export function AuthScreen() {
         </div>
         {err && <Alert variant="destructive"><AlertDescription>{err}</AlertDescription></Alert>}
         {msg && <Alert className="border-0 bg-accent"><AlertDescription className="text-foreground">{msg}</AlertDescription></Alert>}
-        {!back && social && <>
-          <div className="flex flex-col gap-2.5">
-            {providers.google && <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("google")}>{t("Continue with Google")}</Button>}
-            {providers.apple && <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("apple")}>{t("Continue with Apple")}</Button>}
-          </div>
-          {providers.email && <div className="flex items-center gap-2.5 text-xs tracking-wider text-muted-foreground uppercase"><Separator className="flex-1" />{t("or use email")}<Separator className="flex-1" /></div>}
-        </>}
         {back && <LinkBtn className="self-start" onClick={() => go("main")}>‹ {t("Back")}</LinkBtn>}
         {providers.email && form}
-        {providers.email && (view === "main" || view === "signup") && <LinkBtn className="self-start" onClick={() => go("code")}>{t("Sign in with a one-time code instead")}</LinkBtn>}
+        {/* other ways to sign in, below the email form */}
+        {!back && (social || providers.email) && (
+          <div className="mt-2 flex flex-col gap-2.5">
+            <div className="flex items-center gap-2.5 text-xs tracking-wider text-muted-foreground uppercase"><Separator className="flex-1" />{t("Other ways")}<Separator className="flex-1" /></div>
+            {providers.google && <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("google")}><GoogleMark />{t("Continue with Google")}</Button>}
+            {providers.apple && <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("apple")}><AppleMark />{t("Continue with Apple")}</Button>}
+            {providers.email && <Button variant="outline" className={wide} disabled={busy} onClick={() => go("code")}><Mail />{t("Email me a one-time code")}</Button>}
+          </div>
+        )}
         <div className="mt-2.5 flex flex-col items-start gap-1 border-t pt-3.5">
           <LinkBtn onClick={continueAsGuest}>{t("Continue without an account")}</LinkBtn>
           <p className="text-xs text-muted-foreground">{t("Records stay on this device. You can sign in later and bring them with you.")}</p>
