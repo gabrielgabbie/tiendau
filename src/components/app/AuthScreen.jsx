@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Field, LanguageSelect } from "@/components/app/bits.jsx";
+import { GoogleButton, googleClientId } from "@/components/app/GoogleButton.jsx";
 
 const redirectTo = () => location.origin + location.pathname;
 
@@ -169,7 +170,9 @@ export function AuthScreen() {
         {!back && (social || providers.email) && (
           <div className="mt-2 flex flex-col gap-2.5">
             <div className="flex items-center gap-2.5 text-xs tracking-wider text-muted-foreground uppercase"><Separator className="flex-1" />{t("Other ways")}<Separator className="flex-1" /></div>
-            {providers.google && <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("google")}><GoogleMark />{t("Continue with Google")}</Button>}
+            {providers.google && (googleClientId
+              ? <GoogleButton run={run} onError={() => setErr(t("Can't reach the server. Check your connection and try again."))} />
+              : <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("google")}><GoogleMark />{t("Continue with Google")}</Button>)}
             {providers.apple && <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("apple")}><AppleMark />{t("Continue with Apple")}</Button>}
             {providers.email && <Button variant="outline" className={wide} disabled={busy} onClick={() => go("code")}><Mail />{t("Email me a one-time code")}</Button>}
           </div>

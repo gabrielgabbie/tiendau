@@ -48,6 +48,7 @@ In Supabase → **Authentication → Sign In / Providers → Email**, it is on b
 2. **Credentials → Create credentials → OAuth client ID → Web application**.
    - Authorized redirect URI: `https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback`
 3. Copy the **Client ID** and **Client secret** into Supabase → **Authentication → Sign In / Providers → Google**, and enable it.
+4. So Google's screen shows your site instead of `YOUR-PROJECT-REF.supabase.co`: set `VITE_GOOGLE_CLIENT_ID` to the same Client ID (in `.env` and your host's settings), and add your site plus `http://localhost` and `http://localhost:5173` as **Authorized JavaScript origins**. The app then uses Google's own button; without the variable it falls back to the redirect.
 
 ### 5. Apple sign-in (optional, needs a paid Apple Developer account, $99/year)
 
