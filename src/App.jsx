@@ -56,7 +56,7 @@ export default function App() {
     const offs = [
       on("guestData", (counts) => open(GuestDataSheet, counts)),
       on("recovery", () => open(NewPasswordSheet, {})),
-      on("mode", () => { if (sync.mode === "none") setSheetOpen(false); }),
+      on("mode", () => { if (sync.mode === "none" || sync.mode === "guest") setSheetOpen(false); }),
     ];
     return () => offs.forEach((f) => f());
   }, [open]);
@@ -64,6 +64,7 @@ export default function App() {
   // chat sticks to the newest message
   useLayoutEffect(() => { if (ui.tab === "chat" && chatLog.length && mainRef.current) mainRef.current.scrollTop = mainRef.current.scrollHeight; });
 
+  if (sync.mode === "loading") return null; // a moment while the saved session is checked
   if (sync.mode === "none") return <><AuthScreen /><Toaster theme={prefs.theme} position="top-center" /></>;
 
   setCurrency(settings().currency);

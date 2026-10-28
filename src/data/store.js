@@ -22,7 +22,7 @@ export const LS = {
 /** Public sync state the UI reads. */
 export const sync = {
   configured: false,
-  mode: "none", // "none" (show sign-in) | "guest" | "account"
+  mode: "loading", // "loading" (starting up) | "none" (sign-in page) | "guest" | "account"
   user: null,
   status: "idle", // "idle" | "syncing" | "saved" | "offline" | "error"
   error: "",
@@ -121,7 +121,7 @@ function loadCache(key) {
 let cacheTimer = 0;
 function saveCache() {
   clearTimeout(cacheTimer);
-  cacheTimer = setTimeout(() => { if (sync.mode !== "none") LS.set(cacheKey(), S); }, 150);
+  cacheTimer = setTimeout(() => { if (sync.mode === "guest" || sync.mode === "account") LS.set(cacheKey(), S); }, 150);
 }
 function resetData() { COLS.forEach((c) => (S[c] = {})); }
 
@@ -292,14 +292,13 @@ async function enterAccount(user) {
 function enterGuest() {
   unsubscribe();
   setMode("guest");
-  LS.set("pl-guest-chosen", true);
   loadCache("pl-guest");
   queue = []; sync.pending = 0;
   setStatus("idle");
   emit("change");
 }
 
-/** Start up: restore the session if there is one, otherwise show sign-in (or guest mode if chosen before). */
+/** Start up: restore the session if there is one, otherwise open the app without an account (sign-in is in the header). */
 export async function init() {
   sync.configured = !!supabase;
   if (!supabase) { enterGuest(); return; }
@@ -313,22 +312,18 @@ export async function init() {
   });
   const { data } = await supabase.auth.getSession();
   if (data.session?.user) await enterAccount(data.session.user);
-  else if (LS.get("pl-guest-chosen", false)) enterGuest();
-  else setMode("none");
+  else enterGuest();
 }
 
-export const continueAsGuest = () => { sync.canGoBack = false; enterGuest(); };
-// opened from inside the app (not the first launch): the sign-in page then offers a way back
-export const showSignIn = () => { sync.canGoBack = true; unsubscribe(); resetData(); setMode("none"); };
+export const continueAsGuest = () => enterGuest();
+export const showSignIn = () => { unsubscribe(); resetData(); setMode("none"); };
 
 function leaveAccount() {
   const uid = sync.user?.id;
   unsubscribe();
   if (uid) { LS.del(`pl-acct-${uid}`); LS.del(`pl-queue-${uid}`); } // don't leave someone's records on a shared phone
   queue = []; resetData();
-  LS.del("pl-guest-chosen");
-  setMode("none");
-  emit("change");
+  enterGuest(); // back to the app, without an account
 }
 
 export async function signOut() {

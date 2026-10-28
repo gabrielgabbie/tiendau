@@ -5,7 +5,7 @@ import {
   UtensilsCrossed, Car, ShoppingBag, Receipt, House, HeartPulse, Ticket, Luggage, BookOpen, Gift, Tag,
   Banknote, Laptop, Star, TrendingUp, Undo2, CirclePlus, ArrowLeftRight, ArrowDown, ArrowUp, LayoutGrid, Scissors, CalendarDays, ChevronLeft,
 } from "lucide-react";
-import { t, fmtDate, ymd, getLang } from "@/core/index.js";
+import { t, fmtDate, ymd, isVi, LANGS } from "@/core/index.js";
 import { vi, enGB } from "react-day-picker/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const ICONS = {
   "Food & Drinks": UtensilsCrossed, Transport: Car, Shopping: ShoppingBag, Bills: Receipt, Housing: House,
@@ -52,6 +53,16 @@ export function Segmented({ value, onChange, options, size = "md", className, la
         ))}
       </TabsList>
     </Tabs>
+  );
+}
+
+/** Language picker (a dropdown: there are three, two of them Vietnamese). */
+export function LanguageSelect({ value, onChange, className }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger size="sm" className={cn("w-36 bg-background", className)} aria-label={t("Language")}><SelectValue /></SelectTrigger>
+      <SelectContent>{Object.entries(LANGS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+    </Select>
   );
 }
 
@@ -170,7 +181,7 @@ export function DateField({ id, value, onChange, className }) {
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
-        <Calendar mode="single" selected={date} defaultMonth={date} weekStartsOn={1} locale={getLang() === "vi" ? vi : enGB}
+        <Calendar mode="single" selected={date} defaultMonth={date} weekStartsOn={1} locale={isVi() ? vi : enGB}
           onSelect={(d) => { if (d) { onChange(ymd(d)); setOpen(false); } }} />
       </PopoverContent>
     </Popover>

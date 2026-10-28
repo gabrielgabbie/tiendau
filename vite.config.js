@@ -11,6 +11,8 @@ function localApi(env) {
     name: "local-api",
     configureServer(server) {
       if (env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
+      // /privacy and /terms are plain pages in public/ (Vercel serves them without .html via cleanUrls)
+      server.middlewares.use((req, res, next) => { if (/^\/(privacy|terms)\/?$/.test(req.url)) req.url = req.url.replace(/\/?$/, ".html"); next(); });
       server.middlewares.use("/api/read-receipt", async (req, res) => {
         const mod = await server.ssrLoadModule("/api/read-receipt.js");
         await mod.default(req, res);
@@ -49,7 +51,7 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         // the app shell works offline; Supabase requests always go to the network
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/auth\//],
+        navigateFallbackDenylist: [/^\/auth\//, /^\/(privacy|terms)(\.html)?$/],
         // fonts are bundled with the app (Geist), so cache them with the shell for offline use
         globPatterns: ["**/*.{js,css,html,woff2}"],
       },

@@ -1,7 +1,7 @@
 // Ledger pickers. Dates: "Specific" picks a day, month or year; "Range" picks a start and end date.
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { EXP_CATS, INC_CATS, pad, ymd, today, fmtLong, ymLabel, ymAdd, monthsShort, compact, money, t, getLang } from "@/core/index.js";
+import { EXP_CATS, INC_CATS, pad, ymd, today, fmtLong, ymLabel, ymAdd, monthsShort, compact, money, t, isVi } from "@/core/index.js";
 import { vi, enGB } from "react-day-picker/locale";
 import { ui, saveL, bump, data, periodRange, spentBy, clearFilter } from "@/lib/model.js";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,7 @@ function MonthCalendar({ view, setView, marks, ...props }) {
         {...props}
         month={monthOf(view)}
         onMonthChange={(d) => setView(ymd(d).slice(0, 7))}
-        locale={getLang() === "vi" ? vi : enGB}
+        locale={isVi() ? vi : enGB}
         weekStartsOn={1}
         hideNavigation
         showOutsideDays={false}

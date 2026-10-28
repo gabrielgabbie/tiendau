@@ -2,16 +2,16 @@
 import { useState } from "react";
 import { ChevronLeft, Mail } from "lucide-react";
 import { supabase, providers } from "@/data/supabase.js";
-import { continueAsGuest, sync } from "@/data/store.js";
+import { continueAsGuest } from "@/data/store.js";
 import { friendly } from "@/lib/auth-errors.js";
-import { t, LANGS } from "@/core/index.js";
+import { t } from "@/core/index.js";
 import { prefs, setLanguage } from "@/lib/model.js";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { Field, Segmented } from "@/components/app/bits.jsx";
+import { Field, LanguageSelect } from "@/components/app/bits.jsx";
 
 const redirectTo = () => location.origin + location.pathname;
 
@@ -31,6 +31,14 @@ const GoogleMark = () => (
 );
 const AppleMark = () => (
   <svg viewBox="0 0 24 24" className="size-[18px]" aria-hidden="true" fill="currentColor"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9a4.8 4.8 0 0 0-3.8-2c-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9a5 5 0 0 0-4.2 2.6c-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.3-.1 1.7-.8 3.3-.8 1.5 0 2 .8 3.3.8 1.4 0 2.2-1.3 3-2.5a10 10 0 0 0 1.4-2.8 4.4 4.4 0 0 1-2.3-4.2ZM13.9 5c.7-.8 1.2-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4Z"/></svg>
+);
+
+/** Privacy and terms (plain pages outside the app). */
+export const LegalLinks = () => (
+  <p className="mt-1 flex gap-4 text-xs text-muted-foreground">
+    <a className="underline-offset-2 hover:underline" href="/privacy">{t("Privacy")}</a>
+    <a className="underline-offset-2 hover:underline" href="/terms">{t("Terms")}</a>
+  </p>
 );
 
 const LinkBtn = ({ className, ...p }) => <Button type="button" variant="link" className={cn("h-auto px-0 py-1 font-semibold", className)} {...p} />;
@@ -145,10 +153,10 @@ export function AuthScreen() {
     <div className="flex h-full justify-center overflow-y-auto pad-safe-x pt-[calc(28px+env(safe-area-inset-top,0px))] pb-[calc(24px+env(safe-area-inset-bottom,0px))]">
       <div className="flex w-full max-w-[400px] flex-col gap-3.5">
         <div className="mb-2 flex flex-col gap-1.5">
-          {sync.canGoBack && <LinkBtn className="-mt-2 mb-1 self-start" onClick={continueAsGuest}><ChevronLeft className="size-4" />{t("Back")}</LinkBtn>}
+          <LinkBtn className="-mt-2 mb-1 self-start" onClick={continueAsGuest}><ChevronLeft className="size-4" />{t("Back")}</LinkBtn>
           <div className="flex items-start justify-between gap-3">
             <BrandMark />
-            <Segmented size="sm" className="w-44" label={t("Language")} value={prefs.lang} onChange={setLanguage} options={Object.entries(LANGS)} />
+            <LanguageSelect value={prefs.lang} onChange={setLanguage} />
           </div>
           <h1 className="mt-1.5 font-display text-[30px] leading-[1.05] font-bold tracking-tight">Tiền Đâu</h1>
           <p className="text-base text-balance text-muted-foreground">{t("Log spending in seconds. Split bills without the math.")}</p>
@@ -170,6 +178,7 @@ export function AuthScreen() {
           <LinkBtn onClick={continueAsGuest}>{t("Continue without an account")}</LinkBtn>
           <p className="text-xs text-muted-foreground">{t("Records stay on this device. You can sign in later and bring them with you.")}</p>
         </div>
+        <LegalLinks />
       </div>
     </div>
   );

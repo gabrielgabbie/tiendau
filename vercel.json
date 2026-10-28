@@ -1,5 +1,8 @@
 {
   "functions": {
-    "api/read-receipt.js": { "maxDuration": 60 }
-  }
+    "api/read-receipt.js": {
+      "maxDuration": 60
+    }
+  },
+  "cleanUrls": true
 }

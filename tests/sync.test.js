@@ -144,9 +144,9 @@ test("backup round-trips", async () => {
   assert.throws(() => store.importData({ hello: 1 }), /isn't a Tiền Đâu backup/);
 });
 
-test("signing out clears this account's records from the device", async () => {
+test("signing out clears this account's records and goes back to the app without an account", async () => {
   await store.signOut();
-  assert.equal(store.sync.mode, "none");
+  assert.equal(store.sync.mode, "guest");
   assert.equal(Object.keys(store.S.tx).length, 0);
   assert.equal(localStorage.getItem(`pl-acct-${user.id}`), null);
 });
