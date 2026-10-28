@@ -4,9 +4,12 @@ import { today, addDays, pad } from "./dates.js";
 import { guessCat } from "./categories.js";
 import { t } from "./i18n.js";
 
-export function parseAmountToken(numStr,suf){
+// Everyday money words: chục = 10 nghìn; lít, xị = 100 nghìn; củ = triệu; cành = nghìn.
+// `tail` is the spoken decimal in "1tr2", "1 củ 2", "2 lít 5" (= 1.2 triệu, 1.2 triệu, 250 nghìn).
+export function parseAmountToken(numStr,suf,tail){
   let s=numStr;suf=(suf||"").toLowerCase();
-  const mult=/^(k|nghìn|ngàn|n|thousand)$/.test(suf)?1e3:/^(tr|triệu|m|mil|million|củ)$/.test(suf)?1e6:/^(b|tỷ|ty)$/.test(suf)?1e9:1;
+  const mult=/^(k|nghìn|ngàn|n|thousand|cành)$/.test(suf)?1e3:/^chục$/.test(suf)?1e4:/^(lít|xị)$/.test(suf)?1e5:/^(tr|triệu|m|mil|million|củ)$/.test(suf)?1e6:/^(b|tỷ|ty)$/.test(suf)?1e9:1;
+  if(mult>1&&tail&&/^\d+$/.test(s))s+="."+tail;
   if(mult>1)s=s.replace(",",".");
   else if(/^\d{1,3}([.,]\d{3})+$/.test(s))s=s.replace(/[.,]/g,"");
   else s=s.replace(",",".");
@@ -20,7 +23,7 @@ const ADJ_RES=[
   [/\b(?:tip|boa)\s*:?\s*(\d+(?:[.,]\d+)*)\s*(k|tr|nghìn|ngàn)?(?![\p{L}%])/giu,g=>({label:"Tip",type:"fee",value:parseAmountToken(g[1],g[2]),unit:"amount",alloc:"proportional"})],
   [/\b(?:discount|promo(?:\s+code)?|voucher|coupon|giảm(?:\s+giá)?|khuyến mãi|km)\s*:?\s*-?\s*(\d+(?:[.,]\d+)*)\s*(%|k|tr|nghìn|ngàn)?(?!\p{L})/giu,g=>g[2]==="%"?{label:"Discount",type:"discount",value:pct(g[1]),unit:"percent",alloc:"proportional"}:{label:"Discount",type:"discount",value:parseAmountToken(g[1],g[2]),unit:"amount",alloc:"proportional"}],
 ];
-const AMT_RE=/(\$|€)?\s*(\d+(?:[.,]\d+)*)\s*(k|tr|triệu|nghìn|ngàn|củ|thousand|million|mil|m|b|tỷ)?\b\s*(đồng|dong|đ|vnd|usd|dollars?|\$|€)?/i;
+const AMT_RE=/(\$|€)?\s*(\d+(?:[.,]\d+)*)\s*(?:(k|tr|triệu|nghìn|ngàn|củ|chục|lít|xị|cành|thousand|million|mil|m|b|tỷ)(?:(?<=tr|triệu|củ|lít|xị)\s?(\d{1,2}))?(?![\p{L}\d]))?\s*(đồng|dong|đ|vnd|usd|dollars?|\$|€)?/iu;
 /** A written date like "25/10" or "25/10/2026" (day first). Without a year, a date that would be
  *  in the future means last year. Returns [ymd, matchedText] or null. */
 export function parseDayMonth(s){
@@ -47,12 +50,12 @@ export function localParse(text){
     // a written date comes out first so its numbers aren't read as the amount
     const dm=parseDayMonth(part);if(dm)part=part.replace(dm[1]," ");
     const m=part.match(AMT_RE);if(!m)continue;
-    let amount=parseAmountToken(m[2],m[3]);if(!amount)continue;
+    let amount=parseAmountToken(m[2],m[3],m[4]);if(!amount)continue;
     let date=dm?dm[0]:today();if(!dm&&/yesterday|hôm qua/i.test(part))date=addDays(-1);
     const evm=part.match(/#([\p{L}\d][\p{L}\d_-]*)/u)||part.match(/\b(?:for|at|on|in)\s+(?:the\s+)?([\p{L}\d ]+?\s(?:trip|party|event|weekend|holiday))\b/iu);
     const paidm=part.match(/\b([\p{L}]+)\s+(?:paid|trả)\b/iu);
     const withm=(paidm?part.replace(paidm[0]," "):part).match(/\b(?:with|split with|chia với|chia cho|cùng|với)\s+([^#]+?)(?=\s+(?:at|for|on|in|#)\b|\s*#|\s*$)/i);
-    const note=part.replace(m[0]," ").replace(/^\s*\+/,"").replace(paidm?paidm[0]:/$^/,"").replace(/#[\p{L}\d_-]+/gu," ").replace(/(?:\bwith\b|\bsplit with\b|chia với|chia cho|cùng|với).*$/i," ").replace(/\b(yesterday|today|spent|paid|for|on)\b/gi," ").replace(/\s+/g," ").trim()||"Entry";
+    const note=part.replace(m[0]," ").replace(/^\s*\+/,"").replace(paidm?paidm[0]:/$^/,"").replace(/#[\p{L}\d_-]+/gu," ").replace(/(?:\bwith\b|\bsplit with\b|chia với|chia cho|cùng|với).*$/i," ").replace(/\b(yesterday|today|spent|paid|for|on)\b/gi," ").replace(/hôm (?:qua|nay)/giu," ").replace(/\s+/g," ").trim()||"Entry";
     const backm=part.match(/^\s*([\p{L}]+)\s+(?:paid|sent|transferred|trả)\s+(me|you|[\p{L}]+)\s+back\b/iu)||part.match(/^\s*(I|me|tôi)\s+(?:paid|sent|trả)\s+([\p{L}]+)\s+back\b/iu);
     if(backm){items.push({type:"settle",from:backm[1],to:backm[2],amount,event:evm?evm[1]:null,date});continue}
     if(withm||/\bsplit\b|chia\b/i.test(part)){

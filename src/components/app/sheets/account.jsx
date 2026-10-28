@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Camera, ChevronRight, Coins, Download, KeyRound, Languages, LogOut, MessageSquareX, Upload, User, Users, X } from "lucide-react";
-import { CURRENCIES, today, t, LANGS } from "@/core/index.js";
+import { CURRENCIES, today, t } from "@/core/index.js";
 import { S, put, sync, signOut, unsyncedCount, moveGuestDataToAccount, exportData, importData, deleteAllData, deleteAccount } from "@/data/store.js";
 import { supabase } from "@/data/supabase.js";
 import { settings, clearChat, bump, who, providerLabel, syncText, prefs, setLanguage, saveAvatar } from "@/lib/model.js";
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AppSheet, SheetActions, Field, Segmented, ConfirmButton, useSheets } from "@/components/app/bits.jsx";
+import { LegalLinks } from "@/components/app/AuthScreen.jsx";
+import { AppSheet, SheetActions, Field, LanguageSelect, ConfirmButton, useSheets } from "@/components/app/bits.jsx";
 
 export function SyncLine() {
   const dot = { syncing: "bg-primary", offline: "bg-warn", error: "bg-spend" }[sync.status] || "bg-earn";
@@ -125,7 +126,7 @@ export function AccountSettingsSheet(sheet) {
 
       <Group title={t("Preferences")}>
         <Row icon={Languages} label={t("Language")}>
-          <Segmented size="sm" className="w-40" label={t("Language")} value={prefs.lang} onChange={setLanguage} options={Object.entries(LANGS)} />
+          <LanguageSelect value={prefs.lang} onChange={setLanguage} />
         </Row>
         <Row icon={Coins} label={t("Currency")}>
           <Select value={s.currency} onValueChange={(v) => put("meta", Object.assign(settings(), { currency: v }))}>
@@ -149,7 +150,7 @@ export function AccountSettingsSheet(sheet) {
             <ConfirmButton label={t("Delete my account")} confirmLabel={t("Tap again to delete your account")} onConfirm={async () => { await deleteAccount(); close(); toast(t("Your account was deleted")); }} />
           </div>
       </Group>
-      <SheetActions><Button onClick={close}>{t("Done")}</Button></SheetActions>
+      <SheetActions left={<LegalLinks />}><Button onClick={close}>{t("Done")}</Button></SheetActions>
     </AppSheet>
   );
 }

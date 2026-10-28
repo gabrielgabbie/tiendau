@@ -2,7 +2,7 @@
 // ledger filters and periods. No DOM here; components read these and re-render on store events.
 import {
   EXP_CATS, INC_CATS, guessCat, round, pad, ymd, today, fmtLong, money,
-  isNum, finalizeBill, localParse, t, setLang, locale, billRecords, balances, settlePlan, cur,
+  isNum, finalizeBill, localParse, t, setLang, htmlLang, locale, billRecords, balances, settlePlan, cur,
 } from "../core/index.js"; // relative paths so tests can load this module in Node
 import { S, LS, put, del, sync, on, newId } from "../data/store.js";
 
@@ -31,7 +31,7 @@ export const getVersion = () => version;
 // The app is light-only for now; the dark tokens stay in styles.css, and `theme` is the one place to bring it back.
 export const prefs = { lang: LS.get("pl-lang", "vi"), theme: "light" };
 setLang(prefs.lang);
-export function setLanguage(l) { prefs.lang = l; LS.set("pl-lang", l); setLang(l); document.documentElement.lang = l; bump(); }
+export function setLanguage(l) { prefs.lang = l; LS.set("pl-lang", l); setLang(l); document.documentElement.lang = htmlLang(l); bump(); }
 export function applyTheme() {
   const dark = prefs.theme === "dark", el = document.documentElement;
   el.classList.toggle("dark", dark); el.style.colorScheme = dark ? "dark" : "light";

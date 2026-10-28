@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowUp, Mic, Square, Loader2, ImagePlus, Plus, Folder, FolderPlus, Check, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ListFilter, Pencil, X } from "lucide-react";
-import { money, compact, fmtDate, cur, balances, settlePlan, today, t, getLang } from "@/core/index.js";
+import { money, compact, fmtDate, cur, balances, settlePlan, today, t, isVi } from "@/core/index.js";
 import { readBill, billThumb } from "@/lib/bill-reader.js";
 import { useSpeech, micPermission } from "@/lib/use-speech.js";
 import { MicSheet } from "@/components/app/sheets/mic.jsx";
@@ -150,7 +150,7 @@ export function Composer({ inputRef, text, setText, onHeight }) {
   };
   const detach = () => setAttached((a) => { if (a) URL.revokeObjectURL(a.url); return null; });
   const speech = useSpeech({
-    lang: getLang() === "vi" ? "vi-VN" : "en-US",
+    lang: isVi() ? "vi-VN" : "en-US",
     onText: (heard) => update(base.current ? `${base.current}, ${heard}` : heard),
     onError: (code) => {
       // blocked after all (e.g. Safari, which can't report the permission ahead of time)

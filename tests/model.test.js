@@ -46,7 +46,7 @@ test("being paid back adds income; paying back adds an expense; others' payments
   setLang("vi");
   const inBill = model.saveSettle({ id: crypto.randomUUID(), kind: "settle", amount: 300000, paidBy: "minh", shares: { me: 300000 }, date: "2026-10-26" });
   const inc = store.S.tx[inBill.linkedTx];
-  assert.deepEqual([inc.type, inc.amount, inc.category, inc.note], ["income", 300000, "Refund", "Minh trả lại bạn"]);
+  assert.deepEqual([inc.type, inc.amount, inc.category, inc.note], ["income", 300000, "Refund", "Minh trả tiền bạn"]);
 
   const outBill = model.saveSettle({ id: crypto.randomUUID(), kind: "settle", amount: 150000, paidBy: "me", shares: { minh: 150000 }, date: "2026-10-26" });
   assert.equal(store.S.tx[outBill.linkedTx].type, "expense");
@@ -129,4 +129,29 @@ test("a general settle-up pays off that person's oldest bill first", () => {
   model.saveSettle({ id: model.uid(), kind: "settle", amount: 50000, paidBy: khoa, shares: { me: 50000 }, date: first.date, createdAt: Date.now() });
   assert.equal(model.billDebts(store.S, first)[0].paid, 50000);
   assert.equal(model.billDebts(store.S, second)[0].paid, 0);
+});
+
+test("miền Tây wording falls back to standard Vietnamese where it isn't different", async () => {
+  const { t, setLang, locale } = await import("../src/core/index.js");
+  setLang("mt");
+  assert.equal(t("What did you spend today?"), "Bữa nay xài gì rồi?");
+  assert.equal(t("Save"), "Lưu", "falls back to VI");
+  assert.equal(t("{name} owes you", { name: "An" }), "An thiếu bạn");
+  assert.equal(locale(), "vi-VN");
+  setLang("gz");
+  assert.equal(t("Added {n} records.", { n: 2 }), "Ghi xong 2 khoản rùi nha ✅");
+  assert.equal(t("Save"), "Lưu", "Gen Z falls back to VI too");
+  setLang("vi");
+});
+
+test("reads everyday money words", async () => {
+  const { localParse } = await import("../src/core/index.js");
+  const amt = (s) => { const r = localParse(s); const x = (r.items || r)[0]; return x.amount ?? x.subtotal; };
+  assert.equal(amt("cà phê 2 chục"), 20000);
+  assert.equal(amt("nhậu 5 xị"), 500000);
+  assert.equal(amt("đổ xăng 1 lít"), 100000);
+  assert.equal(amt("trà sữa 2 lít 5"), 250000);
+  assert.equal(amt("tiền điện 1 củ 2"), 1200000);
+  assert.equal(amt("lẩu 1tr2"), 1200000);
+  assert.equal(amt("phở 55.000đ"), 55000);
 });
