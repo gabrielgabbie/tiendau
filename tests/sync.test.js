@@ -1,4 +1,4 @@
-// Tests the account sync logic against an in-memory stand-in for Supabase.
+// Tests where records live (always on the phone) against an in-memory stand-in for Supabase.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -59,94 +59,78 @@ const fake = fakeSupabase(user);
 fake.db.transactions.push({ id: "aaaaaaaa-0000-4000-8000-000000000001", user_id: user.id, type: "expense", amount: "55000.00", category: "Food", note: "Phở", date: "2026-10-20", bill_id: null, created_at: "2026-10-20T01:00:00Z" });
 useClient(fake);
 
-test("signs in from a saved session and loads records", async () => {
+test("on sign-in, records an older version uploaded come down to the phone and leave the server", async () => {
   await store.init();
   assert.equal(store.sync.mode, "account");
   const t = store.S.tx["aaaaaaaa-0000-4000-8000-000000000001"];
   assert.equal(t.amount, 55000);
   assert.equal(t.category, "Food & Drinks", "old category names are migrated");
-  assert.equal(store.sync.status, "saved");
+  assert.ok(JSON.parse(localStorage.getItem(`pl-acct-${user.id}`)).tx[t.id], "saved on the phone");
+  assert.equal(fake.db.transactions.length, 0, "deleted from the server");
 });
 
-test("saves new records to the server", async () => {
+test("new records stay on the phone and never reach the server", async () => {
   const id = crypto.randomUUID();
   store.put("tx", { id, type: "expense", amount: 32000, category: "Transport", note: "Grab", date: "2026-10-25", createdAt: Date.now() });
-  await wait();
-  const row = fake.db.transactions.find((r) => r.id === id);
-  assert.ok(row, "row was upserted");
-  assert.equal(row.user_id, user.id);
-  assert.equal(store.sync.pending, 0);
-});
-
-test("stores bills with split details in data", async () => {
-  const id = crypto.randomUUID();
-  store.put("bills", { id, kind: "bill", title: "Lẩu", date: "2026-10-25", category: "Food & Drinks", eventId: null, amount: 900000, shares: { me: 450000, x: 450000 }, paid: { me: 900000 }, mode: "equal", createdAt: Date.now() });
-  await wait();
-  const row = fake.db.bills.find((r) => r.id === id);
-  assert.equal(row.amount, 900000);
-  assert.deepEqual(row.data.shares, { me: 450000, x: 450000 });
-  assert.equal(row.title, "Lẩu");
-});
-
-test("queues changes while offline and sends them when back", async () => {
-  fake.offline = true;
-  const id = crypto.randomUUID();
-  store.put("tx", { id, type: "income", amount: 25000000, category: "Salary", note: "Lương", date: "2026-10-25" });
-  await wait();
-  assert.equal(store.sync.status, "offline");
-  assert.equal(store.sync.pending, 1);
-  assert.ok(store.S.tx[id], "shown right away");
-  assert.ok(JSON.parse(localStorage.getItem(`pl-queue-${user.id}`)).length === 1, "queue survives a reload");
-  // editing the same record again keeps only the latest change in the queue
-  store.put("tx", { ...store.S.tx[id], amount: 26000000 });
-  await wait();
-  assert.equal(store.sync.pending, 1);
-  fake.offline = false;
-  store.put("people", { id: crypto.randomUUID(), name: "An" }); // any new change triggers a retry
-  await wait(40);
-  assert.equal(store.sync.pending, 0);
-  assert.equal(fake.db.transactions.find((r) => r.id === id).amount, 26000000);
-  assert.equal(store.sync.status, "saved");
-});
-
-test("applies changes from other devices live", async () => {
-  const id = crypto.randomUUID();
-  fake.remote("INSERT", "transactions", { id, user_id: user.id, type: "expense", amount: 120000, category: "Bills", note: "Wifi", date: "2026-10-24", created_at: new Date().toISOString() });
-  assert.equal(store.S.tx[id].amount, 120000);
-  fake.remote("DELETE", "transactions", { id });
-  assert.equal(store.S.tx[id], undefined);
-});
-
-test("deletes reach the server", async () => {
-  const id = Object.keys(store.S.tx)[0];
+  store.put("bills", { id: crypto.randomUUID(), kind: "bill", title: "Lẩu", date: "2026-10-25", amount: 900000, shares: { me: 450000 }, paid: { me: 900000 }, mode: "equal" });
   store.del("tx", id);
-  await wait();
-  assert.ok(!fake.db.transactions.some((r) => r.id === id));
+  await wait(200);
+  assert.ok(!fake.calls.some(([op]) => op === "upsert"), "nothing uploaded");
+  const saved = JSON.parse(localStorage.getItem(`pl-acct-${user.id}`));
+  assert.equal(saved.tx[id], undefined);
+  assert.equal(Object.keys(saved.bills).length, 1);
+});
+
+test("keeps the server copy when the download fails, and tries again next sign-in", async () => {
+  const id = "bbbbbbbb-0000-4000-8000-000000000002";
+  fake.db.transactions.push({ id, user_id: user.id, type: "expense", amount: "1000", category: "Other", note: "y", date: "2026-10-20", created_at: "2026-10-20T01:00:00Z" });
+  await store.signOut();
+  fake.offline = true;
+  await store.init();
+  assert.equal(store.S.tx[id], undefined);
+  assert.equal(fake.db.transactions.length, 1, "nothing deleted while offline");
+  fake.offline = false;
+  await store.signOut();
+  await store.init();
+  assert.equal(store.S.tx[id].amount, 1000);
+  assert.equal(fake.db.transactions.length, 0);
 });
 
 test("offers guest records on sign-in with fresh ids", async () => {
-  const counts = store.countGuest();
-  assert.deepEqual(counts, { tx: 0, bills: 0 });
   localStorage.setItem("pl-guest", JSON.stringify({ tx: { old1: { id: "old1", type: "expense", amount: 1000, category: "Other", note: "x", date: "2026-10-01" } }, bills: {}, events: {}, people: {}, meta: {} }));
   const n = store.moveGuestDataToAccount();
   assert.equal(n, 1);
-  await wait();
   assert.ok(!store.S.tx.old1, "old id replaced");
-  assert.ok(fake.db.transactions.some((r) => r.note === "x" && /^[0-9a-f-]{36}$/.test(r.id)));
+  assert.ok(Object.values(store.S.tx).some((r) => r.note === "x" && /^[0-9a-f-]{36}$/.test(r.id)));
   assert.equal(localStorage.getItem("pl-guest"), null);
 });
 
-test("backup round-trips", async () => {
+test("backup round-trips and resets the reminder", async () => {
+  const now = Date.now(), month = 31 * 864e5;
+  assert.equal(store.backupDue(now), false, "not due right away");
+  assert.equal(store.backupDue(now + month), true, "due after 30 days");
+  store.snoozeBackup();
+  assert.equal(store.backupDue(Date.now() + 864e5), false, "“Later” waits a week");
   const backup = store.exportData();
+  assert.equal(store.backupDue(Date.now() + 29 * 864e5), false);
   const before = Object.keys(store.S.tx).length;
   const counts = store.importData(JSON.parse(JSON.stringify(backup)));
   assert.equal(counts.tx, before);
   assert.throws(() => store.importData({ hello: 1 }), /isn't a Tiền Đâu backup/);
 });
 
-test("signing out clears this account's records and goes back to the app without an account", async () => {
+test("signing out keeps the records on the phone; signing in again brings them back", async () => {
+  const n = Object.keys(store.S.tx).length;
   await store.signOut();
   assert.equal(store.sync.mode, "guest");
   assert.equal(Object.keys(store.S.tx).length, 0);
+  assert.equal(Object.keys(JSON.parse(localStorage.getItem(`pl-acct-${user.id}`)).tx).length, n);
+  await store.init();
+  assert.equal(Object.keys(store.S.tx).length, n);
+});
+
+test("deleting the account removes its records from the phone", async () => {
+  await store.deleteAccount();
+  assert.equal(store.sync.mode, "guest");
   assert.equal(localStorage.getItem(`pl-acct-${user.id}`), null);
 });

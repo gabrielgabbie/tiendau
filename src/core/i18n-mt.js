@@ -147,15 +147,12 @@ export const MT = {
   // Account
   "Records are saved on this device only.": "Dữ liệu chỉ nằm trên máy này thôi à.",
   "This permanently deletes your account and every record in it. Export a backup from Settings first if you might want your records later.": "Tài khoản với mọi khoản trong đó sẽ mất luôn á. Sau này còn cần thì tải file sao lưu trước nghen.",
-  "Offline, changes waiting": "Rớt mạng, thay đổi đang chờ",
   "Bring your records with you?": "Mang dữ liệu cũ theo hông?",
-  "This device has {tx} records and {bills} shared bills from before you signed in. Add them to your account so they sync everywhere?": "Máy này có {tx} khoản với {bills} bill chung ghi hồi chưa đăng nhập. Thêm vô tài khoản để máy nào cũng thấy hen?",
+  "This phone has {tx} records and {bills} shared bills from before you signed in. Add them to your account?": "Máy này có {tx} khoản với {bills} bill chung ghi hồi chưa đăng nhập. Thêm vô tài khoản của bạn hông?",
   "Add to my account": "Thêm vô tài khoản",
   "Password updated": "Đổi mật khẩu xong rồi nghen",
 
   // sync status
-  "You're offline. {ch} will sync when you're back online.": "Đang rớt mạng. Có mạng lại là {ch} tự đồng bộ.",
-  "You're offline. New changes will sync when you're back online.": "Đang rớt mạng. Có mạng lại là tự đồng bộ hà.",
   "Couldn't start. Check your connection and reload.": "Mở app hổng được. Coi lại mạng rồi tải lại nghen.",
 
   // Sign-in

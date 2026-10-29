@@ -6,8 +6,8 @@ import { money, compact, fmtDate, cur, balances, settlePlan, today, t, isVi } fr
 import { readBill, billThumb } from "@/lib/bill-reader.js";
 import { useSpeech, micPermission } from "@/lib/use-speech.js";
 import { MicSheet } from "@/components/app/sheets/mic.jsx";
-import { S, put, del, LS } from "@/data/store.js";
-import { ui, chatLog, data, send, billDebts, payBillDebt, startBill, billProgress, finishBill, failBill, pname, billMeta, uid, bump, saveL, settings, saveSettle, deleteBill, SORTS, periodRange, periodLabel, stepPeriod, filterLabel, filterOn, clearFilter } from "@/lib/model.js";
+import { S, put, del, LS, backupDue, snoozeBackup } from "@/data/store.js";
+import { ui, chatLog, data, send, billDebts, payBillDebt, startBill, billProgress, finishBill, failBill, pname, billMeta, uid, bump, saveL, settings, saveSettle, deleteBill, downloadBackup, SORTS, periodRange, periodLabel, stepPeriod, filterLabel, filterOn, clearFilter } from "@/lib/model.js";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,6 +34,20 @@ function DemoBanner({ D }) {
     <div className="flex items-center gap-2.5 rounded-xl bg-accent px-3 py-2.5 text-[13px]">
       <p className="flex-1"><b>{t("Example data.")}</b> {t("Your own records replace it as soon as you log one.")}</p>
       <Button variant="link" size="sm" onClick={() => put("meta", Object.assign(settings(), { hideDemo: true }))}>{t("Hide")}</Button>
+    </div>
+  );
+}
+
+/** After 30 days without a backup: records live only on this phone, so nudge to save a file. */
+function BackupReminder() {
+  if (!backupDue()) return null;
+  return (
+    <div role="status" className="flex items-center gap-2.5 rounded-[8px] bg-card px-3 py-2.5 text-[13px] shadow-[0_1px_2px_rgb(0_0_0/0.05)]">
+      <p className="flex-1"><b>{t("Back up your records.")}</b> {t("They're only on this phone. Save a file in case you lose it or switch phones.")}</p>
+      <div className="flex flex-none flex-col items-end">
+        <Button size="sm" onClick={() => { downloadBackup(); toast(t("Backup saved")); }}>{t("Back up")}</Button>
+        <Button variant="link" size="sm" className="h-7 text-muted-foreground" onClick={snoozeBackup}>{t("Later")}</Button>
+      </div>
     </div>
   );
 }
@@ -100,6 +114,7 @@ function HowTo() {
 export function ChatView({ say }) {
   if (!chatLog.length) return (
     <div className="flex flex-1 flex-col justify-end gap-4 px-0.5 pt-6 pb-2">
+      <BackupReminder />
       <div className="flex flex-col gap-2">
         <h2 className="font-display text-[30px] leading-[1.05] font-bold tracking-tight text-balance">{t("What did you spend today?")}</h2>
         <p className="max-w-[40ch] text-muted-foreground">{t("Type it or say it, like you'd text a friend. Records are added instantly and you can edit any of them after.")}</p>
@@ -110,6 +125,7 @@ export function ChatView({ say }) {
   );
   return (
     <div className="flex flex-col gap-2.5 pt-1">
+      <BackupReminder />
       {chatLog.map((m, i) => m.role === "me"
         ? <div key={i} className="flex max-w-[86%] flex-col items-end gap-1 self-end">
             {m.image && <img src={m.image} alt={t("Bill photo")} className="max-h-56 w-auto max-w-[220px] rounded-2xl rounded-br-[5px] border object-cover" />}

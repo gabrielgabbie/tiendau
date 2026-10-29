@@ -21,6 +21,15 @@ test("reads amounts and shorthand", () => {
   assert.equal(localParse("salary 25tr").items[0].type, "income");
 });
 
+test("a month in the text isn't the amount, and a number with a unit beats a bare count", () => {
+  const pick = (s) => localParse(s).items.map((i) => [i.type, i.amount, i.note]);
+  assert.deepEqual(pick("luong t10 34567890"), [["income", 34567890, "Luong t10"]]);
+  assert.deepEqual(pick("lương tháng 10 15tr"), [["income", 15000000, "Lương tháng 10"]]);
+  assert.deepEqual(pick("điện thg 9 1.2tr"), [["expense", 1200000, "Điện thg 9"]]);
+  assert.deepEqual(pick("thưởng 10/2026 5tr"), [["income", 5000000, "Thưởng 10/2026"]]);
+  assert.deepEqual(pick("trà sữa 2 ly 90k"), [["expense", 90000, "Trà sữa 2 ly"]]);
+});
+
 test("reads amounts the way speech recognition writes them", () => {
   const pho = localParse("phở 55 nghìn đồng").items[0];
   assert.deepEqual([pho.amount, pho.note], [55000, "Phở"]);

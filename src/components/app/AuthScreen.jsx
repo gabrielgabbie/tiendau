@@ -167,14 +167,14 @@ export function AuthScreen() {
         {back && <LinkBtn className="self-start" onClick={() => go("main")}>‹ {t("Back")}</LinkBtn>}
         {providers.email && form}
         {/* other ways to sign in, below the email form */}
-        {!back && (social || providers.email) && (
+        {!back && (social || providers.emailCode) && (
           <div className="mt-2 flex flex-col gap-2.5">
             <div className="flex items-center gap-2.5 text-xs tracking-wider text-muted-foreground uppercase"><Separator className="flex-1" />{t("Other ways")}<Separator className="flex-1" /></div>
             {providers.google && (googleClientId
               ? <GoogleButton run={run} onError={() => setErr(t("Can't reach the server. Check your connection and try again."))} />
               : <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("google")}><GoogleMark />{t("Continue with Google")}</Button>)}
             {providers.apple && <Button variant="outline" className={wide} disabled={busy} onClick={() => oauth("apple")}><AppleMark />{t("Continue with Apple")}</Button>}
-            {providers.email && <Button variant="outline" className={wide} disabled={busy} onClick={() => go("code")}><Mail />{t("Email me a one-time code")}</Button>}
+            {providers.emailCode && <Button variant="outline" className={wide} disabled={busy} onClick={() => go("code")}><Mail />{t("Email me a one-time code")}</Button>}
           </div>
         )}
         <div className="mt-2.5 flex flex-col items-start gap-1 border-t pt-3.5">

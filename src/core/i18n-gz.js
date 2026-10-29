@@ -134,16 +134,12 @@ export const GZ = {
   // Account
   "Records are saved on this device only.": "Data chỉ nằm trên máy này thui.",
   "This permanently deletes your account and every record in it. Export a backup from Settings first if you might want your records later.": "Tài khoản với mọi khoản trong đó sẽ bay màu vĩnh viễn. Còn cần thì tải file sao lưu trước nha.",
-  "Offline, changes waiting": "Rớt mạng, thay đổi đang chờ",
   "Bring your records with you?": "Mang data cũ theo hông?",
-  "This device has {tx} records and {bills} shared bills from before you signed in. Add them to your account so they sync everywhere?": "Máy này có {tx} khoản với {bills} bill chung từ hồi chưa đăng nhập. Thêm vào tài khoản để máy nào cũng thấy nha?",
+  "This phone has {tx} records and {bills} shared bills from before you signed in. Add them to your account?": "Máy này có {tx} khoản với {bills} bill chung từ hồi chưa đăng nhập. Thêm vào tài khoản hông bồ?",
   "Password updated": "Đổi mật khẩu xong rùi nha 🔐",
   "Your account was deleted": "Tài khoản bay màu rùi",
 
   // sync status
-  "You're offline. {ch} will sync when you're back online.": "Đang rớt mạng. Có mạng lại là {ch} tự sync.",
-  "You're offline. New changes will sync when you're back online.": "Đang rớt mạng. Có mạng lại là tự sync nha.",
-  "All changes saved · {time}": "Lưu hết rùi · {time}",
   "Couldn't start. Check your connection and reload.": "App toang rùi. Check mạng rồi tải lại nha.",
 
   // Sign-in

@@ -4,7 +4,7 @@ import {
   EXP_CATS, INC_CATS, guessCat, round, pad, ymd, today, fmtLong, money,
   isNum, finalizeBill, localParse, t, setLang, htmlLang, locale, billRecords, balances, settlePlan, cur,
 } from "../core/index.js"; // relative paths so tests can load this module in Node
-import { S, LS, put, del, sync, on, newId } from "../data/store.js";
+import { S, LS, put, del, sync, on, newId, exportData } from "../data/store.js";
 
 export const uid = () => newId();
 
@@ -290,15 +290,18 @@ export function who() {
   const name = m.full_name || m.name || ""; const email = u?.email || "";
   return { signedIn: !!u, name, email, initial: (name || email || "?")[0].toUpperCase(), avatar: settings().avatar || m.avatar_url || m.picture || null };
 }
-/** Sets (or with null, removes) your profile picture; it syncs with your settings. */
+/** Sets (or with null, removes) your profile picture; it's kept with your settings on this phone. */
 export function saveAvatar(avatar) { put("meta", Object.assign(settings(), { avatar: avatar || null })); bump(); }
 export const providerLabel = (p) => ({ google: "Google", apple: "Apple" })[p] || t("email");
 export function syncText() {
-  const n = sync.pending, ch = t("{n} changes", { n });
-  if (sync.loading && sync.status !== "offline") return t("Loading your records…");
-  if (sync.status === "syncing") return t("Saving {ch}…", { ch });
-  if (sync.status === "offline") return n ? t("You're offline. {ch} will sync when you're back online.", { ch }) : t("You're offline. New changes will sync when you're back online.");
-  if (sync.status === "error") return t("A change couldn't be saved: {err}", { err: sync.error });
-  if (sync.lastSynced) return t("All changes saved · {time}", { time: new Date(sync.lastSynced).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }) });
-  return t("Connected");
+  if (sync.status === "error") return sync.error;
+  if (sync.loading) return t("Moving your records onto this phone…");
+  return t("Records are saved on this phone only");
+}
+/** Saves every record to a file; the way to keep records safe or move them to a new phone. */
+export function downloadBackup() {
+  const blob = new Blob([JSON.stringify(exportData(), null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `tien-dau-backup-${today()}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  bump();
 }

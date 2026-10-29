@@ -3,10 +3,10 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Camera, ChevronRight, Coins, Download, KeyRound, Languages, LogOut, MessageSquareX, Upload, User, Users, X } from "lucide-react";
-import { CURRENCIES, today, t } from "@/core/index.js";
-import { S, put, sync, signOut, unsyncedCount, moveGuestDataToAccount, exportData, importData, deleteAllData, deleteAccount } from "@/data/store.js";
+import { CURRENCIES, t } from "@/core/index.js";
+import { S, put, sync, signOut, moveGuestDataToAccount, importData, deleteAllData, deleteAccount } from "@/data/store.js";
 import { supabase } from "@/data/supabase.js";
-import { settings, clearChat, bump, who, providerLabel, syncText, prefs, setLanguage, saveAvatar } from "@/lib/model.js";
+import { settings, clearChat, bump, who, providerLabel, syncText, prefs, setLanguage, saveAvatar, downloadBackup } from "@/lib/model.js";
 import { friendly } from "@/lib/auth-errors.js";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { LegalLinks } from "@/components/app/AuthScreen.jsx";
 import { AppSheet, SheetActions, Field, LanguageSelect, ConfirmButton, useSheets } from "@/components/app/bits.jsx";
 
 export function SyncLine() {
-  const dot = { syncing: "bg-primary", offline: "bg-warn", error: "bg-spend" }[sync.status] || "bg-earn";
+  const dot = sync.status === "error" ? "bg-spend" : sync.loading ? "bg-primary" : "bg-earn";
   return (
     <p role="status" className={cn("flex items-center gap-2 text-[13px] text-muted-foreground", sync.status === "error" && "text-spend")}>
       <span className={cn("size-2 flex-none rounded-full", dot)} />{syncText()}
@@ -64,12 +64,10 @@ export function AccountSettingsSheet(sheet) {
   const { close } = useSheets();
   const s = settings(); const w = who();
   const email = (sync.user?.app_metadata?.provider || "email") === "email";
-  const [sureOut, setSureOut] = useState(false);
   // pages inside this sheet: null (the main list), "people" or "password"; each has a back arrow
   const [page, setPage] = useState(null);
   const photo = useRef(null);
   const backup = useRef(null);
-  const n = unsyncedCount();
   if (sync.mode !== "account") return null; // signed-in users only; signed out, the header button leads to sign-in
 
   const pickPhoto = async (e) => {
@@ -80,17 +78,13 @@ export function AccountSettingsSheet(sheet) {
       toast(t("Profile picture updated"));
     } catch { toast(t("That photo couldn't be read. Try another one.")); }
   };
-  const exportBackup = () => {
-    const blob = new Blob([JSON.stringify(exportData(), null, 2)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `tien-dau-backup-${today()}.json`;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); toast(t("Backup saved"));
-  };
+  const exportBackup = () => { downloadBackup(); toast(t("Backup saved")); };
   const importBackup = (e) => {
     const f = e.target.files[0]; if (!f) return; const r = new FileReader();
     r.onload = () => { try { const c = importData(JSON.parse(r.result)); toast(t("Restored {tx} records and {bills} bills", { tx: c.tx, bills: c.bills })); } catch (err) { toast(err.message || t("That file couldn't be read.")); } };
     r.readAsText(f); e.target.value = "";
   };
-  const out = async () => { if (n && !sureOut) { setSureOut(true); return; } await signOut(); close(); };
+  const out = async () => { await signOut(); close(); };
 
   if (page === "people") return (
     <AppSheet {...sheet} title={t("People")} onBack={() => setPage(null)}>
@@ -119,9 +113,9 @@ export function AccountSettingsSheet(sheet) {
         {w.avatar && s.avatar && <Button variant="link" size="sm" className="h-auto py-0 text-xs text-muted-foreground" onClick={() => saveAvatar(null)}>{t("Remove picture")}</Button>}
       </div>
 
-      <Group title={t("Account")}>
+      <Group title={t("Account")} note={t("Signing out keeps your records on this phone. They're back when you sign in again.")}>
           {email && <Row icon={KeyRound} label={t("Change password")} onClick={() => setPage("password")} />}
-          <Row icon={LogOut} label={sureOut ? t("{n} changes haven't synced. Tap again to sign out anyway", { n }) : t("Sign out")} onClick={out} chevron={false} />
+          <Row icon={LogOut} label={t("Sign out")} onClick={out} chevron={false} />
       </Group>
 
       <Group title={t("Preferences")}>
@@ -137,7 +131,7 @@ export function AccountSettingsSheet(sheet) {
         <Row icon={Users} label={t("People")} value={Object.keys(S.people).length || ""} onClick={() => setPage("people")} />
       </Group>
 
-      <Group title={t("Data")} note={t("A backup saves all your records to a file. Restoring adds to what's here and updates records with the same id.")}>
+      <Group title={t("Data")} note={t("Your records are only on this phone. Export a backup to keep them safe or move them to a new phone; importing adds to what's here.")}>
         <Row icon={Download} label={t("Export backup")} onClick={exportBackup} chevron={false} />
         <Row icon={Upload} label={t("Import backup")} onClick={() => backup.current.click()} chevron={false} />
         <Row icon={MessageSquareX} label={t("Clear quick-add history")} onClick={() => { clearChat(); bump(); toast(t("History cleared")); }} chevron={false} />
@@ -251,10 +245,10 @@ export function GuestDataSheet({ tx, bills, ...sheet }) {
   const { close } = useSheets();
   return (
     <AppSheet {...sheet} title={t("Bring your records with you?")}>
-      <p>{t("This device has {tx} records and {bills} shared bills from before you signed in. Add them to your account so they sync everywhere?", { tx, bills })}</p>
+      <p>{t("This phone has {tx} records and {bills} shared bills from before you signed in. Add them to your account?", { tx, bills })}</p>
       <SheetActions>
         <Button variant="outline" onClick={close}>{t("Not now")}</Button>
-        <Button onClick={() => { const n = moveGuestDataToAccount(); close(); toast(t("Added {n} items to your account", { n })); }}>{t("Add to my account")}</Button>
+        <Button onClick={() => { try { const n = moveGuestDataToAccount(); close(); toast(t("Added {n} items to your account", { n })); } catch (e) { toast(e.message); } }}>{t("Add to my account")}</Button>
       </SheetActions>
     </AppSheet>
   );

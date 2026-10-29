@@ -24,6 +24,24 @@ const ADJ_RES=[
   [/\b(?:discount|promo(?:\s+code)?|voucher|coupon|giảm(?:\s+giá)?|khuyến mãi|km)\s*:?\s*-?\s*(\d+(?:[.,]\d+)*)\s*(%|k|tr|nghìn|ngàn)?(?!\p{L})/giu,g=>g[2]==="%"?{label:"Discount",type:"discount",value:pct(g[1]),unit:"percent",alloc:"proportional"}:{label:"Discount",type:"discount",value:parseAmountToken(g[1],g[2]),unit:"amount",alloc:"proportional"}],
 ];
 const AMT_RE=/(\$|€)?\s*(\d+(?:[.,]\d+)*)\s*(?:(k|tr|triệu|nghìn|ngàn|củ|chục|lít|xị|cành|thousand|million|mil|m|b|tỷ)(?:(?<=tr|triệu|củ|lít|xị)\s?(\d{1,2}))?(?![\p{L}\d]))?\s*(đồng|dong|đ|vnd|usd|dollars?|\$|€)?/iu;
+// A month named in the text ("lương t10", "tháng 10", "thg 9", "10/2026") isn't the amount.
+const MONTH_RES=[
+  /(?<![\p{L}\d])(?:(?:tháng|thang|thg)\.?\s?|t)(?:1[0-2]|0?[1-9])(?:\/\d{2,4})?(?![\d.,]|\s*(?:k|tr|triệu|nghìn|ngàn|củ|đ)(?!\p{L}))/giu,
+  /(?<![\p{L}\d\/])(?:1[0-2]|0?[1-9])\/\d{4}(?!\d)/gu,
+];
+const hideMonths=s=>MONTH_RES.reduce((x,re)=>x.replace(re,w=>" ".repeat(w.length)),s);
+/** The amount in `part`: a number with a unit ("90k", "1tr2", "50đ") wins, otherwise the biggest
+ *  plain number, so "trà sữa 2 ly 90k" is 90k and "lương t10 34567890" is 34,567,890.
+ *  `0` is the amount's text as written in `part`. */
+function pickAmount(part){
+  const re=new RegExp(AMT_RE.source,"giu");let best=null;
+  for(const g of hideMonths(part).matchAll(re)){
+    if(!g[2])continue;const value=parseAmountToken(g[2],g[3],g[4]);if(!value)continue;
+    const unit=!!(g[1]||g[3]||g[5]);
+    if(!best||unit&&!best.unit||unit===best.unit&&!unit&&value>best.value){const lead=g[0].length-g[0].trimStart().length;best={0:part.slice(g.index+lead,g.index+g[0].length),value,unit}}
+  }
+  return best;
+}
 /** A written date like "25/10" or "25/10/2026" (day first). Without a year, a date that would be
  *  in the future means last year. Returns [ymd, matchedText] or null. */
 export function parseDayMonth(s){
@@ -49,8 +67,8 @@ export function localParse(text){
     if(/\b(with|split|chia|cùng|với)\b/i.test(part))ADJ_RES.forEach(([re,mk])=>{part=part.replace(re,(...g)=>{const a=mk(g);if(a&&a.value>0)adjs.push(a);return " "})});
     // a written date comes out first so its numbers aren't read as the amount
     const dm=parseDayMonth(part);if(dm)part=part.replace(dm[1]," ");
-    const m=part.match(AMT_RE);if(!m)continue;
-    let amount=parseAmountToken(m[2],m[3],m[4]);if(!amount)continue;
+    const m=pickAmount(part);if(!m)continue;
+    let amount=m.value;
     let date=dm?dm[0]:today();if(!dm&&/yesterday|hôm qua/i.test(part))date=addDays(-1);
     const evm=part.match(/#([\p{L}\d][\p{L}\d_-]*)/u)||part.match(/\b(?:for|at|on|in)\s+(?:the\s+)?([\p{L}\d ]+?\s(?:trip|party|event|weekend|holiday))\b/iu);
     const paidm=part.match(/\b([\p{L}]+)\s+(?:paid|trả)\b/iu);

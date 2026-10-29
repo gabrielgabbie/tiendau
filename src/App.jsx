@@ -23,11 +23,11 @@ const TABS = [
 // toasts sit at the top: the bottom holds the floating chat box, tab buttons and sheet actions, which they would cover
 const TOAST_OFFSET = { top: "calc(12px + env(safe-area-inset-top, 0px))" };
 
-/** The one header button: your picture (or initials), opening account & settings. A dot shows sync trouble. */
+/** The one header button: your picture (or initials), opening account & settings. A dot shows when records couldn't be saved. */
 function MeButton({ open }) {
   const acct = sync.mode === "account";
-  const dot = acct && { syncing: "bg-primary", offline: "bg-warn", error: "bg-spend" }[sync.status];
-  const hint = !acct ? "" : sync.status === "offline" ? t("Offline, changes waiting") : sync.status === "error" ? t("A change couldn't be saved") : "";
+  const dot = acct && sync.status === "error" && "bg-spend";
+  const hint = dot ? sync.error : "";
   return (
     // signed out, there's nothing to set: the button just leads to signing in
     <button type="button" title={hint} onClick={() => acct ? open(AccountSettingsSheet, {}) : sync.configured ? showSignIn() : toast(t("Accounts aren't set up for this copy of the app yet."))}
