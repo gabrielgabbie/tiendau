@@ -1,13 +1,13 @@
 # Tiền Đâu
 
-Log spending and income in seconds, and split bills with friends. An installable web app (PWA) for iPhone and Android, with accounts and sync through [Supabase](https://supabase.com).
+Log spending and income in seconds, and split bills with friends. An installable web app (PWA) for iPhone and Android. Records stay on the phone, signed in or not; accounts through [Supabase](https://supabase.com) only say who you are.
 
 - **Quick add**: type `phở 55k, grab 32k` or `dinner 1.2tr với An, Bình #Dalat ship 30k`. Rules on the device read it; no AI and nothing sent anywhere except your own database.
 - **Ledger**: filter by day, month, year or a date range, by type and category, and sort by date or amount.
 - **Split**: shared bills with per-person items, fees and discounts that each split their own way, several payers, events, and settle-up suggestions.
-- **Accounts**: sign in with Google, Apple, or email (password or a one-time code). Records sync live across devices and keep working offline.
+- **Accounts**: sign in with Google, Apple, or email (password or a one-time code). The account holds only the sign-in details; records never leave the phone.
 - **Guest mode**: use it without an account; sign in later and bring your records with you.
-- **Backup**: export everything to a file and restore it.
+- **Backup**: export everything to a file and restore it, also how you move to a new phone. A reminder shows after 30 days without one.
 
 ---
 
@@ -19,7 +19,7 @@ You need a free Supabase account, a free hosting account (Vercel or Netlify), an
 
 1. Go to [supabase.com](https://supabase.com) → **New project**. Pick a region close to you (Singapore for Vietnam) and save the database password somewhere safe.
 2. Open **SQL Editor → New query**, paste everything from `supabase/migrations/0001_init.sql`, and press **Run**.
-   This creates the tables, makes every row private to its owner (Row Level Security), turns on live sync, and adds the "delete my account" function.
+   This adds the "delete my account" function. (It also creates record tables that older versions synced to; the app now only reads them once, to move any records left there onto the phone, and then empties them.)
 3. Open **Project Settings → API** and copy the **Project URL** and the **anon public** key.
 
 ### 2. Run it on your computer
@@ -37,7 +37,7 @@ Email sign-in works straight away. Google and Apple need the steps below.
 In Supabase → **Authentication → Sign In / Providers → Email**, it is on by default.
 
 - **Confirm email**: on by default, so new accounts get a confirmation link. Turn it off if you'd rather people get in immediately.
-- **One-time code**: open **Authentication → Emails → Magic Link** and make sure the template includes the code, for example:
+- **One-time code** (hidden until you set `VITE_AUTH_EMAIL_CODE=true`, after adding custom SMTP below): open **Authentication → Emails → Magic Link** and make sure the template includes the code, for example:
   `<p>Your Tiền Đâu code is <strong>{{ .Token }}</strong></p>`
   The code matters on iPhone: a home-screen app has its own storage, so a sign-in *link* opened from Mail lands in Safari instead of the app. Typing the code keeps you in the app.
 - Supabase's built-in email sender is limited to a few emails an hour. For real use, add your own SMTP (Resend, Postmark, SendGrid…) under **Project Settings → Authentication → SMTP**.
@@ -96,7 +96,7 @@ src/
     bills.js       bill splitting, balances, settle-up suggestions
   data/
     supabase.js    Supabase client and which sign-in buttons to show
-    store.js       local cache, offline queue, live sync, guest mode, backup
+    store.js       records on the phone, guest/account modes, moving old server records down, backup
   lib/
     model.js       app logic the screens share: demo data, chat → records, ledger filters
     auth-errors.js plain-language sign-in errors
@@ -111,30 +111,30 @@ src/
   main.jsx       start-up
   styles.css     Tailwind + shadcn theme tokens (jade palette, light and dark)
 api/read-receipt.js                 Vercel function: reads a bill photo with Claude (needs ANTHROPIC_API_KEY)
-supabase/migrations/0001_init.sql   tables, privacy rules, live sync
+supabase/migrations/0001_init.sql   delete-my-account function (and the tables older versions synced to)
 tests/core.test.js                  tests for the core logic (npm test)
 tests/model.test.js                 tests for shared bills and quick add, in both languages
 ```
 
-**Data model.** `transactions` holds expenses and income. `bills` holds shared bills and settle-up payments; the split details (who ordered what, fees, payers, the computed shares) are in its `data` column. `people` are the friends you split with (they don't need accounts), `events` group bills, and `settings` holds currency. Every table has `user_id` and a policy that only lets the signed-in person see and change their own rows.
+**Where records live.** Always in the browser's storage on the phone: under `pl-guest` without an account, and under `pl-acct-<user id>` when signed in, so people sharing a phone keep separate records. Nothing is uploaded. Older versions synced signed-in records to Supabase; on sign-in the app copies any still there onto the phone and then deletes them from the server (only after the phone has saved them).
 
-**Offline.** The app keeps a copy of your records on the device. Changes made offline wait in a queue and are sent when you're back online; the dot on the settings button shows when something is waiting.
+**Data model.** `tx` holds expenses and income. `bills` holds shared bills and settle-up payments with their split details (who ordered what, fees, payers, the computed shares). `people` are the friends you split with (they don't need accounts), `events` group bills, and `meta` holds settings such as currency and your profile picture.
 
-**Signing out** removes that account's records from the device (they stay safe in your account), so a shared phone doesn't keep someone else's data.
+**Signing out** keeps that account's records on the phone; they're back when you sign in again. Deleting the account removes them.
 
 ## Moving to a native app later
 
 When you build an Expo / React Native app:
 
 - Copy `src/core/` as-is. It has no browser or UI code, and `npm test` covers it.
-- Use the same Supabase project. Accounts, records and privacy rules carry over; people sign in with the same Google, Apple or email account and see the same data.
+- Use the same Supabase project for accounts; people sign in with the same Google, Apple or email account. Records move over with a backup file.
 - Rebuild the screens with React Native components, and port `src/data/store.js` with AsyncStorage instead of `localStorage`.
 - Apple requires an in-app way to delete your account; `delete_my_account()` in the database is already there for that.
 
 ## Notes
 
 - Sign-in buttons are plain text. If you want the official Google and Apple button styles, follow their branding guidelines (Google Identity "Sign in with Google" branding, Apple "Sign in with Apple" Human Interface Guidelines).
-- Quick-add history is stored per device and isn't synced; the records it creates are.
+- Quick-add history is stored on the phone too.
 - `npm test` runs the core tests; `npm run build` makes the production files in `dist/`.
 
 ## Reading bills with AI (optional)

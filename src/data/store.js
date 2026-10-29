@@ -1,15 +1,15 @@
-// Where records live.
-// - Guest mode: only in this browser (localStorage).
-// - Account mode: in Supabase, with a local copy so the app opens instantly and works offline.
-//   Changes made offline wait in a queue and are sent when the connection is back.
-//   Changes made on other devices arrive live through Supabase Realtime.
+// Where records live: always on this phone (localStorage), signed in or not. Nothing is sent to a server.
+// - Without an account: under "pl-guest".
+// - Signed in: under that account's own key, so two people sharing a phone keep separate records.
+//   The account is only who you are (name, email, picture from Google); records never upload.
+// Older versions kept signed-in records in Supabase. On sign-in, any still there are copied onto the
+// phone and then deleted from the server. A backup file moves records to another phone.
 import { supabase } from "./supabase.js";
 import { migrateCategory } from "../core/categories.js";
 import { t } from "../core/i18n.js";
 
 export const COLS = ["tx", "bills", "events", "people", "meta"];
 const TABLE = { tx: "transactions", bills: "bills", events: "events", people: "people", meta: "settings" };
-const COL_OF = Object.fromEntries(Object.entries(TABLE).map(([c, t]) => [t, c]));
 
 export const S = { tx: {}, bills: {}, events: {}, people: {}, meta: {} };
 
@@ -24,11 +24,9 @@ export const sync = {
   configured: false,
   mode: "loading", // "loading" (starting up) | "none" (sign-in page) | "guest" | "account"
   user: null,
-  status: "idle", // "idle" | "syncing" | "saved" | "offline" | "error"
+  status: "idle", // "idle" | "error" (couldn't save on this phone)
   error: "",
-  pending: 0,
-  lastSynced: null,
-  loading: false,
+  loading: false, // bringing down records an older version left on the server
 };
 
 // ---------- events for the UI ----------
@@ -36,30 +34,8 @@ const listeners = { change: new Set(), status: new Set(), mode: new Set(), guest
 export const on = (ev, fn) => { listeners[ev].add(fn); return () => listeners[ev].delete(fn); };
 const emit = (ev, arg) => listeners[ev].forEach((fn) => { try { fn(arg); } catch (e) { console.error(e); } });
 
-// ---------- rows <-> records ----------
-const iso = (ms) => (ms ? new Date(ms).toISOString() : undefined);
+// ---------- server rows -> records (only to bring down what older versions uploaded) ----------
 const msOf = (s) => (s ? Date.parse(s) : undefined);
-
-function toRow(col, o, uid) {
-  switch (col) {
-    case "tx":
-      return { id: o.id, user_id: uid, type: o.type, amount: o.amount, category: o.category, note: o.note || "", date: o.date, bill_id: o.billId || null, created_at: iso(o.createdAt) };
-    case "bills": {
-      const { id, kind, title, date, category, eventId, amount, createdAt, ...rest } = o;
-      return { id, user_id: uid, kind, title: title || "", date, category: category || null, event_id: eventId || null, amount, data: rest, created_at: iso(createdAt) };
-    }
-    case "events":
-      return { id: o.id, user_id: uid, name: o.name, date: o.date || null };
-    case "people":
-      return { id: o.id, user_id: uid, name: o.name };
-    case "meta": {
-      const row = { user_id: uid, currency: o.currency || "VND", hide_demo: !!o.hideDemo };
-      // only send `avatar` once a picture has been set, so databases without the column keep working
-      if ("avatar" in o) row.avatar = o.avatar || null;
-      return row;
-    }
-  }
-}
 
 function fromRow(col, r) {
   switch (col) {
@@ -108,9 +84,8 @@ export function normalizeIds(d) {
   return out;
 }
 
-// ---------- local cache ----------
+// ---------- local storage ----------
 const cacheKey = () => (sync.mode === "account" ? `pl-acct-${sync.user.id}` : "pl-guest");
-const queueKey = () => `pl-queue-${sync.user.id}`;
 function loadCache(key) {
   const d = LS.get(key, null);
   COLS.forEach((c) => {
@@ -121,85 +96,34 @@ function loadCache(key) {
 let cacheTimer = 0;
 function saveCache() {
   clearTimeout(cacheTimer);
-  cacheTimer = setTimeout(() => { if (sync.mode === "guest" || sync.mode === "account") LS.set(cacheKey(), S); }, 150);
+  cacheTimer = setTimeout(() => {
+    if (!saveNow()) setStatus("error", t("This phone is out of space, so your records couldn't be saved."));
+    else if (sync.status === "error") setStatus("idle");
+  }, 150);
+}
+/** Saves right away; false if the phone refused (storage full or blocked). */
+function saveNow() {
+  clearTimeout(cacheTimer);
+  if (sync.mode !== "guest" && sync.mode !== "account") return false;
+  try { localStorage.setItem(cacheKey(), JSON.stringify(S)); return true; } catch { return false; }
 }
 function resetData() { COLS.forEach((c) => (S[c] = {})); }
+if (typeof window !== "undefined") window.addEventListener("pagehide", () => saveNow());
 
 // ---------- writes ----------
-let queue = [];
-function saveQueue() { if (sync.mode === "account") LS.set(queueKey(), queue); sync.pending = queue.length; }
-
-function enqueue(op) {
-  // only the latest change to a record matters
-  queue = queue.filter((q) => !(q.col === op.col && q.id === op.id));
-  queue.push(op);
-  saveQueue();
-  setStatus(navigator.onLine === false ? "offline" : "syncing");
-  flush();
-}
-
 export function put(col, obj) {
   S[col][obj.id] = obj;
   saveCache();
-  if (sync.mode === "account") enqueue({ op: "put", col, id: obj.id, obj: JSON.parse(JSON.stringify(obj)) });
   emit("change");
 }
 
 export function del(col, id) {
   delete S[col][id];
   saveCache();
-  if (sync.mode === "account") enqueue({ op: "del", col, id });
   emit("change");
 }
 
-const isNetworkError = (e) =>
-  navigator.onLine === false || !e || /fetch|network|timeout|load failed/i.test(e.message || "") || e.status >= 500 || e.code === "PGRST301";
-
-let flushing = false;
-async function flush() {
-  if (flushing || sync.mode !== "account" || !queue.length) return;
-  flushing = true;
-  setStatus("syncing");
-  const uid = sync.user.id;
-  while (queue.length && sync.mode === "account" && sync.user?.id === uid) {
-    const op = queue[0];
-    let error = null;
-    try {
-      const t = supabase.from(TABLE[op.col]);
-      ({ error } = op.op === "put" ? await t.upsert(toRow(op.col, op.obj, uid)) : await t.delete().eq("id", op.id));
-    } catch (e) {
-      error = e;
-    }
-    if (error) {
-      if (isNetworkError(error)) { setStatus("offline"); break; }
-      // The server refused this change (e.g. invalid data). Drop it so the rest can sync.
-      console.error("Change refused", op, error);
-      sync.error = error.message || "A change couldn't be saved.";
-      queue.shift(); saveQueue();
-      setStatus("error");
-      continue;
-    }
-    queue.shift();
-    saveQueue();
-  }
-  flushing = false;
-  if (!queue.length && sync.mode === "account" && sync.status !== "error") {
-    sync.lastSynced = Date.now();
-    setStatus("saved");
-  }
-}
-function setStatus(s) { sync.status = s; sync.pending = queue.length; emit("status", sync); }
-
-if (typeof window !== "undefined") {
-  window.addEventListener("online", () => flush());
-  setInterval(() => { if (queue.length) flush(); }, 20000);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && sync.mode === "account" && Date.now() - lastLoad > 60000) loadAll();
-  });
-}
-
-// ---------- reads ----------
-let lastLoad = 0;
+// ---------- records left on the server by older versions ----------
 async function fetchAll(table) {
   const out = [];
   for (let from = 0; ; from += 1000) {
@@ -210,57 +134,30 @@ async function fetchAll(table) {
   }
 }
 
-async function loadAll() {
-  if (sync.mode !== "account") return;
-  const uid = sync.user.id;
+/** Copies this account's records from Supabase onto the phone, then deletes them from Supabase.
+ *  The server copy is only deleted once the phone has saved everything; offline, it tries again next time. */
+async function bringDownFromServer(uid) {
   sync.loading = true; emit("status", sync);
   try {
     const results = await Promise.all(COLS.map((c) => fetchAll(TABLE[c])));
-    if (sync.user?.id !== uid) return;
-    COLS.forEach((c, i) => {
-      const m = {};
-      results[i].forEach((r) => (m[keyOf(c, r)] = fromRow(c, r)));
-      S[c] = m;
-    });
-    // re-apply changes that haven't reached the server yet
-    queue.forEach((op) => { if (op.op === "put") S[op.col][op.id] = op.obj; else delete S[op.col][op.id]; });
-    lastLoad = Date.now();
-    saveCache();
+    if (sync.user?.id !== uid || !results.some((r) => r.length)) return;
+    COLS.forEach((c, i) => results[i].forEach((r) => {
+      const id = keyOf(c, r);
+      if (!S[c][id]) S[c][id] = fromRow(c, r); // a change already made on this phone wins
+    }));
+    if (!saveNow()) { setStatus("error", t("This phone is out of space, so your records couldn't be saved.")); return; }
     emit("change");
-    if (!queue.length) { sync.lastSynced = Date.now(); setStatus("saved"); }
+    for (const table of Object.values(TABLE)) {
+      const { error } = await supabase.from(table).delete().eq("user_id", uid);
+      if (error) throw error;
+    }
   } catch (e) {
-    console.warn("Load failed", e);
-    setStatus(isNetworkError(e) ? "offline" : "error");
+    console.warn("Couldn't bring records down from the server; will try again next time", e);
   } finally {
     sync.loading = false; emit("status", sync);
   }
 }
-
-let channel = null;
-function subscribe() {
-  unsubscribe();
-  const uid = sync.user.id;
-  channel = supabase.channel(`pl-${uid}`);
-  for (const table of Object.values(TABLE)) {
-    const apply = (payload) => {
-      const col = COL_OF[payload.table];
-      if (!col || sync.user?.id !== uid) return;
-      const row = payload.eventType === "DELETE" ? payload.old : payload.new;
-      const id = keyOf(col, row);
-      if (!id || queue.some((q) => q.col === col && q.id === id)) return; // a newer local change is on its way
-      if (payload.eventType === "DELETE") { if (!S[col][id]) return; delete S[col][id]; }
-      else S[col][id] = fromRow(col, row);
-      saveCache();
-      emit("change");
-    };
-    channel.on("postgres_changes", { event: "INSERT", schema: "public", table, filter: `user_id=eq.${uid}` }, apply);
-    channel.on("postgres_changes", { event: "UPDATE", schema: "public", table, filter: `user_id=eq.${uid}` }, apply);
-    // Delete events can't be filtered by user; they only carry the id, and unknown ids are ignored.
-    channel.on("postgres_changes", { event: "DELETE", schema: "public", table }, apply);
-  }
-  channel.subscribe();
-}
-function unsubscribe() { if (channel) { supabase.removeChannel(channel); channel = null; } }
+function setStatus(s, error = "") { sync.status = s; sync.error = error; emit("status", sync); }
 
 // ---------- modes ----------
 function setMode(mode, user = null) {
@@ -277,23 +174,19 @@ function guestHasData() {
 
 async function enterAccount(user) {
   if (sync.mode === "account" && sync.user?.id === user.id) { sync.user = user; emit("mode", sync); return; }
-  unsubscribe();
+  saveNow();
   setMode("account", user);
   loadCache(cacheKey());
-  queue = LS.get(queueKey(), []);
-  sync.pending = queue.length;
+  setStatus("idle");
   emit("change");
-  subscribe();
-  await loadAll();
-  flush();
+  await bringDownFromServer(user.id);
   if (guestHasData()) emit("guestData", countGuest());
 }
 
 function enterGuest() {
-  unsubscribe();
+  saveNow();
   setMode("guest");
   loadCache("pl-guest");
-  queue = []; sync.pending = 0;
   setStatus("idle");
   emit("change");
 }
@@ -307,7 +200,7 @@ export async function init() {
     setTimeout(() => {
       if (session?.user && (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED")) enterAccount(session.user);
       if (event === "PASSWORD_RECOVERY") emit("recovery");
-      if (event === "SIGNED_OUT" && sync.mode === "account") leaveAccount();
+      if (event === "SIGNED_OUT" && sync.mode === "account") enterGuest();
     }, 0);
   });
   const { data } = await supabase.auth.getSession();
@@ -316,23 +209,15 @@ export async function init() {
 }
 
 export const continueAsGuest = () => enterGuest();
-export const showSignIn = () => { unsubscribe(); resetData(); setMode("none"); };
+export const showSignIn = () => { saveNow(); resetData(); setMode("none"); };
 
-function leaveAccount() {
-  const uid = sync.user?.id;
-  unsubscribe();
-  if (uid) { LS.del(`pl-acct-${uid}`); LS.del(`pl-queue-${uid}`); } // don't leave someone's records on a shared phone
-  queue = []; resetData();
-  enterGuest(); // back to the app, without an account
-}
-
+/** Signing out keeps this account's records on the phone; they're back when you sign in again. */
 export async function signOut() {
   if (!supabase) return;
+  saveNow();
   await supabase.auth.signOut().catch(() => {});
-  leaveAccount();
+  enterGuest();
 }
-
-export const unsyncedCount = () => queue.length;
 
 // ---------- guest records → account ----------
 export function countGuest() {
@@ -344,33 +229,52 @@ export function moveGuestDataToAccount() {
   if (!raw || sync.mode !== "account") return 0;
   const g = normalizeIds(raw);
   let n = 0;
-  ["people", "events", "tx", "bills"].forEach((c) => Object.values(g[c] || {}).forEach((o) => { put(c, migrateCategory(o)); n++; }));
+  ["people", "events", "tx", "bills"].forEach((c) => Object.values(g[c] || {}).forEach((o) => { S[c][o.id] = migrateCategory(o); n++; }));
+  if (!saveNow()) throw new Error(t("This phone is out of space, so your records couldn't be saved."));
   LS.del("pl-guest");
+  emit("change");
   return n;
 }
 export const forgetGuestData = () => LS.del("pl-guest");
 
 // ---------- account actions ----------
-export async function deleteAllData() {
-  const uid = sync.user.id;
-  for (const t of ["transactions", "bills", "events", "people"]) {
-    const { error } = await supabase.from(t).delete().eq("user_id", uid);
-    if (error) throw error;
-  }
-  queue = queue.filter((q) => q.col === "meta"); saveQueue();
+export function deleteAllData() {
   ["tx", "bills", "events", "people"].forEach((c) => (S[c] = {}));
-  saveCache(); emit("change");
+  saveNow(); emit("change");
 }
 
+/** Deletes the account (its sign-in details on the server) and its records on this phone. */
 export async function deleteAccount() {
+  const uid = sync.user.id;
   const { error } = await supabase.rpc("delete_my_account");
   if (error) throw error;
   await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-  leaveAccount();
+  resetData();
+  enterGuest();
+  LS.del(`pl-acct-${uid}`);
 }
 
 // ---------- backup ----------
+// Records live only on this phone, so a backup file is the way to keep them safe or move to a new phone.
+// `at` is the last backup (or when we started counting); after 30 days without one, a reminder shows.
+const DAY = 864e5, REMIND_AFTER = 30 * DAY, SNOOZE = 7 * DAY;
+const backupKey = () => `pl-backup-${sync.mode === "account" ? sync.user.id : "guest"}`;
+function backupInfo() {
+  let b = LS.get(backupKey(), null);
+  if (!b) { b = { at: Date.now() }; LS.set(backupKey(), b); }
+  return b;
+}
+/** True when there are records and no backup (or "later") in 30 days. */
+export function backupDue(now = Date.now()) {
+  if (sync.mode !== "guest" && sync.mode !== "account") return false;
+  if (!Object.keys(S.tx).length && !Object.keys(S.bills).length) return false;
+  const b = backupInfo();
+  return now - b.at > REMIND_AFTER && !(b.snoozed > now - SNOOZE);
+}
+export function snoozeBackup() { LS.set(backupKey(), { ...backupInfo(), snoozed: Date.now() }); emit("change"); }
+
 export function exportData() {
+  LS.set(backupKey(), { at: Date.now() });
   return {
     app: "pocket-ledger", version: 1, exportedAt: new Date().toISOString(),
     data: { tx: S.tx, bills: S.bills, events: S.events, people: S.people, settings: S.meta.settings || null },
