@@ -1,8 +1,3 @@
 {
-  "functions": {
-    "api/read-receipt.js": {
-      "maxDuration": 60
-    }
-  },
   "cleanUrls": true
 }

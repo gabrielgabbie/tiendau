@@ -102,7 +102,7 @@ src/
     auth-errors.js plain-language sign-in errors
     use-speech.js  voice input via the browser's speech recognition (Chrome, Edge, Safari)
     ocr.js         on-device receipt reading (Tesseract; engine + vi/en data load from jsDelivr on first use, then cached)
-    ai-receipt.js  "Read with AI": sends a shrunken bill photo to /api/read-receipt
+    on-device-ai.js tidies bill text with the browser's own on-device model (Chrome's Gemini Nano) when it has one
     utils.js       cn() class helper used by shadcn/ui
   components/
     ui/            shadcn/ui components (React + Tailwind), themed in styles.css
@@ -110,7 +110,6 @@ src/
   App.jsx        app shell: sign-in or the app, header, tabs, the open sheet
   main.jsx       start-up
   styles.css     Tailwind + shadcn theme tokens (jade palette, light and dark)
-api/read-receipt.js                 Vercel function: reads a bill photo with Claude (needs ANTHROPIC_API_KEY)
 supabase/migrations/0001_init.sql   delete-my-account function (and the tables older versions synced to)
 tests/core.test.js                  tests for the core logic (npm test)
 tests/model.test.js                 tests for shared bills and quick add, in both languages
@@ -137,12 +136,12 @@ When you build an Expo / React Native app:
 - Quick-add history is stored on the phone too.
 - `npm test` runs the core tests; `npm run build` makes the production files in `dist/`.
 
-## Reading bills with AI (optional)
+## Reading bills
 
-When you send a bill photo in Ghi, it is read by Claude if this is set up (a smaller copy of the photo is sent; far better on faded, crumpled or unusual bills, about a cent per photo, billed to your Anthropic account), and otherwise on the phone for free.
+Bill photos are read entirely on the phone, free, with nothing sent anywhere:
 
-1. Create an API key at https://console.anthropic.com → **API Keys**.
-2. In Vercel → your project → **Settings → Environment Variables** (on newer dashboards: **Environments → Production**), add `ANTHROPIC_API_KEY` with that key. Do **not** prefix it with `VITE_` — it must stay on the server.
-3. Redeploy. To test locally, put `ANTHROPIC_API_KEY=...` in `.env` and restart `npm run dev`.
+1. The photo becomes text with Tesseract (its engine and Vietnamese/English data load from jsDelivr the first time, then stay cached).
+2. If the browser has an on-device model ready (Chrome's built-in Gemini Nano, the Prompt API; today on desktop Chrome, not yet on Chrome for Android or Safari), it tidies that text into shop, total and items. Any amount it gives that isn't printed on the bill is thrown out.
+3. Otherwise the app's own rules (`src/core/receipt.js`) do it.
 
-Without a key, bills are simply read on the phone.
+The app never starts the model's download itself, so phones without it just use the rules. Apple Intelligence and Gemini Nano for Android apps are only open to native apps; a React Native / Expo version could use them (see "Moving to a native app later").
