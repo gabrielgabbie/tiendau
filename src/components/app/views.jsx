@@ -138,7 +138,7 @@ export function ChatView({ say }) {
           : <div key={i} className="contents">
               <div className="max-w-[86%] self-start rounded-2xl rounded-bl-[5px] border bg-card px-[13px] py-[9px] break-words whitespace-pre-wrap">{m.text}</div>
               {m.made?.length > 0 && <div className="receipt w-[min(100%,330px)] self-start rounded-t-[4px] rounded-b-xl border bg-card px-3 pt-3 pb-2">{m.made.map((r) => <ReceiptRow key={r.id} r={r} />)}</div>}
-              {m.via && <span className="-mt-1.5 self-start px-1 text-[11px] text-muted-foreground">{t(m.via === "ai" ? "Read with AI" : "Read on this phone")}</span>}
+              {m.via && <span className="-mt-1.5 self-start px-1 text-[11px] text-muted-foreground">{t(m.via === "ai" ? "Read with on-device AI" : "Read on this phone")}</span>}
             </div>)}
     </div>
   );

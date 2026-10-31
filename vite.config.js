@@ -1,32 +1,25 @@
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 
-// In `npm run dev`, serve the Vercel functions in /api too, so "Read with AI" works locally.
-// The server-only key (ANTHROPIC_API_KEY, no VITE_ prefix) is read from .env and never sent to the browser.
-function localApi(env) {
+// In `npm run dev`, serve /privacy and /terms (plain pages in public/) the way Vercel does with cleanUrls.
+function cleanUrls() {
   return {
-    name: "local-api",
+    name: "clean-urls",
     configureServer(server) {
-      if (env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-      // /privacy and /terms are plain pages in public/ (Vercel serves them without .html via cleanUrls)
       server.middlewares.use((req, res, next) => { if (/^\/(privacy|terms)\/?$/.test(req.url)) req.url = req.url.replace(/\/?$/, ".html"); next(); });
-      server.middlewares.use("/api/read-receipt", async (req, res) => {
-        const mod = await server.ssrLoadModule("/api/read-receipt.js");
-        await mod.default(req, res);
-      });
     },
   };
 }
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   // lets a temporary https tunnel (for testing on a phone) reach the dev server
   server: { allowedHosts: [".trycloudflare.com"] },
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   plugins: [
-    localApi(loadEnv(mode, process.cwd(), "")),
+    cleanUrls(),
     react(),
     tailwindcss(),
     VitePWA({
