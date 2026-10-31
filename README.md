@@ -123,6 +123,8 @@ tests/model.test.js                 tests for shared bills and quick add, in bot
 
 ## Moving to a native app later
 
+The full plan, with on-device AI (Apple Foundation Models, Gemini Nano) and Siri, is in [docs/native-app-plan.md](docs/native-app-plan.md).
+
 When you build an Expo / React Native app:
 
 - Copy `src/core/` as-is. It has no browser or UI code, and `npm test` covers it.
