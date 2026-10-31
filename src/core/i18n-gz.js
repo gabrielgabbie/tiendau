@@ -111,7 +111,6 @@ export const GZ = {
   "{name} ordered": "{name} order",
   "You paid it all": "Bồ bao hết, flex dữ",
   "{name} paid it all": "{name} bao hết, flex dữ",
-  "Pick people above.": "Chọn người ở trên trước nha.",
 
   // bill errors
   "Pick who shares this bill.": "Chọn ai chia bill này nha.",
