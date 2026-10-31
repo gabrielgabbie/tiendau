@@ -45,6 +45,7 @@ export function BillSheet({ id, ...sheet }) {
   const [eventSel, setEventSel] = useState(b?.eventId || NO_EVENT);
   const [eventNew, setEventNew] = useState("");
   const [newPerson, setNewPerson] = useState("");
+  const [adding, setAdding] = useState(false); // the "add a person" row is open
   const [feesOpen, setFeesOpen] = useState(!!b?.adjustments?.length);
   if (!b) return null;
   if (b.kind === "settle") return <SettleSheet b={b} {...sheet} />;
@@ -55,7 +56,10 @@ export function BillSheet({ id, ...sheet }) {
   const P = Object.keys(b.people);
   const r = computeBill(b);
 
-  const addPerson = () => { const n = newPerson.trim(); if (!n) return; const pid = findOrCreatePerson(n); change(() => { if (!b.people[pid]) b.people[pid] = { item: null, weight: 1 }; }); setNewPerson(""); };
+  const join = (pid) => change(() => { if (!b.people[pid]) b.people[pid] = { item: null, weight: 1 }; });
+  const addPerson = () => { const n = newPerson.trim(); if (!n) return; join(findOrCreatePerson(n)); setNewPerson(""); };
+  // saved people not on this bill yet, offered while adding
+  const suggestions = everyone.filter((p) => !b.people[p.id] && (!newPerson.trim() || p.name.toLowerCase().includes(newPerson.trim().toLowerCase())));
   const save = () => {
     const res = computeBill(b);
     if (!res.ok) { toast(res.errs[0]); document.getElementById("bPrev")?.scrollIntoView({ block: "center" }); return; }
@@ -69,9 +73,6 @@ export function BillSheet({ id, ...sheet }) {
 
   // one-line summaries for the collapsed sections
   const subtotal = Number(b.subtotal) || 0;
-  const splitSummary = b.mode === "equal"
-    ? [t("Equally"), P.length && subtotal ? t("{amt} each", { amt: compact(subtotal / P.length) }) : ""].filter(Boolean).join(" · ")
-    : t(b.mode === "items" ? "By what each ordered" : "By shares");
   const feesSummary = b.adjustments.length
     ? b.adjustments.map((a) => { const v = adjAmount(a, subtotal); return `${ADJ_NAME(a)}${v ? " " + (v > 0 ? "+" : "−") + compact(Math.abs(v)) : ""}`; }).join(", ")
     : t("None");
@@ -103,46 +104,50 @@ export function BillSheet({ id, ...sheet }) {
       </Select>
       {eventSel === NEW_EVENT && <Input className="h-10" placeholder={t("Event name")} value={eventNew} onChange={(e) => setEventNew(e.target.value)} autoFocus />}
 
+      {/* who's sharing: always a list, one row per person, with how much each takes for the split chosen above it */}
       <Section title={t("Who's sharing")}>
-        <div className="flex flex-wrap items-center gap-2">
-          {everyone.map((p) => (
-            <Chip key={p.id} on={!!b.people[p.id]} onPressedChange={() => change(() => { if (b.people[p.id]) delete b.people[p.id]; else b.people[p.id] = { item: null, weight: 1 }; })}>{p.name}</Chip>
-          ))}
-          <span className="flex h-8 items-center rounded-full border border-dashed border-foreground/20 pl-3 focus-within:border-ring">
-            <input className="w-28 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground" placeholder={t("+ Add a person")} aria-label={t("Add a person")} value={newPerson}
-              onChange={(e) => setNewPerson(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPerson(); } }} />
-            {newPerson.trim() && <button className="pr-2.5 text-[13px] font-semibold text-primary" onClick={addPerson}>{t("Add")}</button>}
-          </span>
+        <Segmented label={t("How to split")} value={b.mode} onChange={(v) => change(() => (b.mode = v))} options={[["equal", t("Equally")], ["items", t("By what each ordered")], ["shares", t("By shares")]]} />
+        <p className="text-xs text-muted-foreground">{t(MODE_HINT[b.mode])}</p>
+        <div className="divide-y rounded-[8px] border bg-card">
+          {P.map((p) => {
+            const o = b.people[p];
+            return (
+              <div key={p} className="flex min-h-11 items-center gap-2 py-1.5 pr-1.5 pl-3">
+                <span className="min-w-0 flex-1 truncate">{nm(p)}</span>
+                {b.mode === "equal" && subtotal > 0 && <Amt className="text-sm text-muted-foreground">{money(r.shares[p] ?? subtotal / P.length)}</Amt>}
+                {b.mode === "items" && <Input className={cn(small, "w-[110px] text-right")} type="text" inputMode="decimal" autoComplete="off" value={isNum(o.item) ? o.item : ""} placeholder={t("Rest")} aria-label={t("{name} ordered", { name: nm(p) })} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); change(() => (o.item = v === "" ? null : Number(v))); }} />}
+                {b.mode === "shares" && (
+                  <span className="inline-flex items-center gap-1">
+                    <Button variant="outline" size="icon-sm" aria-label={t("Fewer shares")} onClick={() => change(() => (o.weight = Math.max(0, (isNum(o.weight) ? Number(o.weight) : 1) - 1)))}><Minus /></Button>
+                    <Input className={cn(small, "w-12 text-center")} type="text" inputMode="decimal" autoComplete="off" value={isNum(o.weight) ? o.weight : 1} aria-label={t("{name} shares", { name: nm(p) })} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ""); change(() => (o.weight = v === "" ? 1 : Number(v))); }} />
+                    <Button variant="outline" size="icon-sm" aria-label={t("More shares")} onClick={() => change(() => (o.weight = (isNum(o.weight) ? Number(o.weight) : 1) + 1))}><Plus /></Button>
+                  </span>
+                )}
+                <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t("Remove {name}", { name: nm(p) })} onClick={() => change(() => delete b.people[p])}><X /></Button>
+              </div>
+            );
+          })}
+          {!P.length && !adding && <div className="px-3 py-2.5 text-sm text-muted-foreground">{t("Add the people sharing this bill.")}</div>}
+          {adding && (
+            <div className="flex flex-col gap-2 px-3 py-2">
+              <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); addPerson(); }}>
+                <Input className="h-9 min-w-0 flex-1" autoFocus placeholder={t("Name")} aria-label={t("Add a person")} value={newPerson} onChange={(e) => setNewPerson(e.target.value)} />
+                <Button size="sm" className="h-9" disabled={!newPerson.trim()}>{t("Add")}</Button>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label={t("Close")} onClick={() => { setAdding(false); setNewPerson(""); }}><X /></Button>
+              </form>
+              {suggestions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestions.slice(0, 12).map((p) => <Chip key={p.id} className="h-7 px-2.5 text-xs" onPressedChange={() => { join(p.id); setNewPerson(""); }}>+ {p.name}</Chip>)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+        {!adding && <Button variant="link" className="h-auto self-start p-0" onClick={() => setAdding(true)}>{t("+ Add a person")}</Button>}
       </Section>
 
       {/* details stay folded until needed; each row shows what's set */}
       <div className="flex flex-col divide-y rounded-[8px] border bg-card">
-        <Disclosure title={t("How to split")} summary={splitSummary} defaultOpen={b.mode !== "equal"}>
-          <Segmented label={t("How to split")} value={b.mode} onChange={(v) => change(() => (b.mode = v))} options={[["equal", t("Equally")], ["items", t("By what each ordered")], ["shares", t("By shares")]]} />
-          <p className="text-xs text-muted-foreground">{t(MODE_HINT[b.mode])}</p>
-          {b.mode !== "equal" && (
-            <div className="divide-y rounded-md border">
-              {P.length ? P.map((p) => {
-                const o = b.people[p];
-                return (
-                  <div key={p} className="flex items-center gap-2.5 px-3 py-1.5">
-                    <span className="flex-1">{nm(p)}</span>
-                    {b.mode === "items" && <Input className={cn(small, "w-[110px]")} type="number" min="0" step="any" inputMode="decimal" value={isNum(o.item) ? o.item : ""} placeholder={t("Rest")} aria-label={t("{name} ordered", { name: nm(p) })} onChange={(e) => change(() => (o.item = e.target.value === "" ? null : Number(e.target.value)))} />}
-                    {b.mode === "shares" && (
-                      <span className="inline-flex items-center gap-1">
-                        <Button variant="outline" size="icon-sm" aria-label={t("Fewer shares")} onClick={() => change(() => (o.weight = Math.max(0, (isNum(o.weight) ? Number(o.weight) : 1) - 1)))}><Minus /></Button>
-                        <Input className={cn(small, "w-12 text-center")} type="number" min="0" step="0.5" value={isNum(o.weight) ? o.weight : 1} aria-label={t("{name} shares", { name: nm(p) })} onChange={(e) => change(() => (o.weight = e.target.value === "" ? 1 : Number(e.target.value)))} />
-                        <Button variant="outline" size="icon-sm" aria-label={t("More shares")} onClick={() => change(() => (o.weight = (isNum(o.weight) ? Number(o.weight) : 1) + 1))}><Plus /></Button>
-                      </span>
-                    )}
-                  </div>
-                );
-              }) : <div className="px-3 py-2 text-muted-foreground">{t("Pick people above.")}</div>}
-            </div>
-          )}
-        </Disclosure>
-
         <Disclosure title={t("Fees & discounts")} summary={feesSummary} open={feesOpen} onOpenChange={setFeesOpen}>
           {b.adjustments.length > 0 && <p className="text-xs text-muted-foreground">{t("Shared the same way as the bill.")}</p>}
           {b.adjustments.map((a, i) => {

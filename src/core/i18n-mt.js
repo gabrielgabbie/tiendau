@@ -122,7 +122,6 @@ export const MT = {
   "Type what each person ordered. Leave someone empty and they split whatever is left equally.": "Nhập tiền món từng người kêu. Ai để trống thì chia đều phần còn lại.",
   "Give each person a number of shares, e.g. 2 for someone who ate double.": "Mỗi người mấy phần, vd. ai ăn gấp đôi thì 2 phần.",
   "{name} ordered": "{name} kêu",
-  "Pick people above.": "Chọn người ở trên trước nghen.",
   "You paid it all": "Bạn bao hết",
   "{name} paid it all": "{name} bao hết",
 

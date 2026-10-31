@@ -312,7 +312,6 @@ export const VI = {
   "{name} shares": "Số phần của {name}",
   "Fewer shares": "Bớt phần",
   "More shares": "Thêm phần",
-  "Pick people above.": "Chọn người ở trên trước nhé.",
   "Fees & discounts": "Phí & giảm giá",
   "Fee": "Phí",
   "Discount": "Giảm giá",
@@ -490,4 +489,5 @@ export const VI = {
   "They're only on this phone. Save a file in case you lose it or switch phones.": "Dữ liệu chỉ nằm trên máy này. Lưu một file phòng khi mất máy hay đổi máy.",
   "Back up": "Sao lưu",
   "Later": "Để sau",
+  "Add the people sharing this bill.": "Thêm những người chia bill này.",
 };
